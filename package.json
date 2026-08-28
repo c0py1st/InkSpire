@@ -1,0 +1,23 @@
+{
+  "name": "moge",
+  "private": true,
+  "version": "0.1.0",
+  "description": "墨阁 —— 本地长篇小说创作 agent",
+  "workspaces": [
+    "shared",
+    "server",
+    "web"
+  ],
+  "scripts": {
+    "dev": "concurrently -k -n server,web -c blue,magenta \"npm:dev -w server\" \"npm:dev -w web\"",
+    "build": "npm run build -w web",
+    "check": "tsc --noEmit -p server && tsc --noEmit -p web",
+    "test": "vitest run --root server",
+    "start": "npm run start -w server"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2",
+    "typescript": "^5.7.3",
+    "vitest": "^3.0.5"
+  }
+}
