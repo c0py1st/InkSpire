@@ -31,17 +31,19 @@ function del<T>(url: string): Promise<T> {
   return fetch(url, { method: 'DELETE' }).then((r) => json<T>(r));
 }
 
-/** SSE 流式调用。onFinal 收到最后一条 final 事件；返回 final 对象或 null。 */
+/** SSE 流式调用。onFinal 收到最后一条 final 事件；返回 final 对象或 null。signal 可中断（同时会掐断上游请求）。 */
 export async function sse<T = unknown>(
   url: string,
   body: unknown,
   onDelta: (text: string) => void,
   onFinal?: (obj: Record<string, unknown>) => void,
+  signal?: AbortSignal,
 ): Promise<T | null> {
   const res = await fetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
+    signal,
   });
   if (!res.ok || !res.body) {
     let msg = `HTTP ${res.status}`;
@@ -94,14 +96,18 @@ export const api = {
 
   listProjects: () => get<ProjectMeta[]>('/api/projects'),
   createProject: (title: string, logline: string) => post<ProjectMeta>('/api/projects', { title, logline }),
-  completeProject: (payload: { meta: { title: string; logline: string }; outline: Outline; characters: CharacterCard[]; worldview: string }) =>
+  completeProject: (payload: { meta: { title: string; logline: string; wordsPerChapter?: number }; outline: Outline; characters: CharacterCard[]; worldview: string }) =>
     post<ProjectMeta>('/api/projects/complete', payload),
   deleteProject: (slug: string) => del<{ ok: true }>(`/api/projects/${slug}`),
 
   getBundle: (slug: string) => get<Bundle & { wordCounts: Record<string, number> }>(`/api/projects/${slug}/bundle`),
   getChapter: (slug: string, id: string) => get<ChapterFile>(`/api/projects/${slug}/chapter/${id}`),
-  saveChapter: (slug: string, id: string, payload: { content: string; status?: string; title?: string }) =>
+  saveChapter: (slug: string, id: string, payload: { content: string; status?: string; title?: string; backup?: boolean }) =>
     put<{ wordCount: number }>(`/api/projects/${slug}/chapter/${id}`, payload),
+  listBackups: (slug: string, id: string) =>
+    get<Array<{ stamp: string; epoch: number; chars: number; title: string }>>(`/api/projects/${slug}/chapter/${id}/backups`),
+  getBackup: (slug: string, id: string, stamp: string) =>
+    get<ChapterFile>(`/api/projects/${slug}/chapter/${id}/backups/${encodeURIComponent(stamp)}`),
   saveOutline: (slug: string, outline: Outline) => put<{ ok: true }>(`/api/projects/${slug}/outline`, outline),
   saveCharacters: (slug: string, chars: CharacterCard[]) => put<{ ok: true }>(`/api/projects/${slug}/characters`, chars),
   saveWorldview: (slug: string, text: string) => put<{ ok: true }>(`/api/projects/${slug}/worldview`, { text }),
@@ -132,8 +138,8 @@ export const api = {
   wizardBible: (kernel: Kernel, volumes: Volume[], onDelta: (t: string) => void) =>
     sse<{ bible: { characters: CharacterCard[]; worldview: string } }>('/api/wizard/bible', { kernel, volumes }, onDelta),
 
-  generateChapter: (slug: string, chapterId: string, mode: 'full' | 'continue', onDelta: (t: string) => void) =>
-    sse<{ chapterId: string }>(`/api/projects/${slug}/generate-chapter/${chapterId}`, { mode }, onDelta),
+  generateChapter: (slug: string, chapterId: string, mode: 'full' | 'continue', onDelta: (t: string) => void, signal?: AbortSignal) =>
+    sse<{ chapterId: string }>(`/api/projects/${slug}/generate-chapter/${chapterId}`, { mode }, onDelta, undefined, signal),
   chat: (slug: string, payload: { messages: Array<{ role: 'user' | 'assistant'; content: string }>; chapterId?: string; selection?: string }, onDelta: (t: string) => void) =>
     sse(`/api/projects/${slug}/chat`, payload, onDelta),
   propose: (slug: string, payload: ProposalRequest, onDelta: (t: string) => void) =>

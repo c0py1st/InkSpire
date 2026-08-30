@@ -4,8 +4,8 @@ import {
 } from '../../../shared/src/types';
 import { countChars } from '../../../shared/src/util';
 import {
-  getMeta, listChapters, loadBundle, readChapter, saveCharacters, saveChapterBody,
-  saveOutline, saveSuggestions, saveWorldview,
+  getMeta, listChapterBackups, listChapters, loadBundle, readChapter, readChapterBackup, saveCharacters,
+  saveChapterBody, saveOutline, saveSuggestions, saveWorldview,
 } from '../fs-store';
 
 export const projectRouter = Router();
@@ -36,16 +36,34 @@ projectRouter.get('/:slug/chapter/:chapterId', (req, res) => {
   }
 });
 
+/** 某章的历史备份列表（新的在前） */
+projectRouter.get('/:slug/chapter/:chapterId/backups', (req, res) => {
+  try {
+    res.json(listChapterBackups(req.params.slug, req.params.chapterId));
+  } catch (err) {
+    res.status(400).json({ error: (err as Error).message });
+  }
+});
+
+/** 读取一份历史备份的正文 */
+projectRouter.get('/:slug/chapter/:chapterId/backups/:stamp', (req, res) => {
+  try {
+    res.json(readChapterBackup(req.params.slug, req.params.chapterId, req.params.stamp));
+  } catch (err) {
+    res.status(404).json({ error: (err as Error).message });
+  }
+});
+
 projectRouter.put('/:slug/chapter/:chapterId', (req, res) => {
   try {
-    const { content, status, title } = req.body as { content: string; status?: ChapterFile['status']; title?: string };
+    const { content, status, title, backup } = req.body as { content: string; status?: ChapterFile['status']; title?: string; backup?: boolean };
     const existing = readChapter(req.params.slug, req.params.chapterId);
     const wordCount = saveChapterBody(req.params.slug, {
       id: req.params.chapterId,
       title: title ?? existing.title,
       status: status ?? existing.status,
       content: content ?? existing.content,
-    });
+    }, Boolean(backup));
     res.json({ ok: true, wordCount });
   } catch (err) {
     res.status(400).json({ error: (err as Error).message });

@@ -27,7 +27,7 @@ projectsRouter.post('/', (req, res) => {
 /** 向导完成后一次性落盘 */
 projectsRouter.post('/complete', (req, res) => {
   const body = req.body as {
-    meta: { title: string; logline: string };
+    meta: { title: string; logline: string; wordsPerChapter?: number };
     outline: Outline;
     characters: CharacterCard[];
     worldview: string;
@@ -46,7 +46,7 @@ projectsRouter.post('/complete', (req, res) => {
     }
     const meta = saveProjectBundle(
       { outline: body.outline, characters: body.characters ?? [], worldview: body.worldview ?? '', summaries: {}, suggestions: [] },
-      { title: body.meta.title, logline: body.meta.logline ?? '' },
+      { title: body.meta.title, logline: body.meta.logline ?? '', wordsPerChapter: body.meta.wordsPerChapter },
       chapters,
     );
     res.json(meta);

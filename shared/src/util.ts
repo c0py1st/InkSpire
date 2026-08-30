@@ -30,3 +30,27 @@ export function slugify(title: string): string {
 export function countChars(text: string): number {
   return text.replace(/\s/g, '').length;
 }
+
+const PARAGRAPH_INDENT = '\u3000\u3000'; // 全角空格 ×2
+
+/**
+ * 保证每个自然段以两个全角空格开头：
+ * - 空行保持为空；
+ * - 行首原有空白（半角空格/全角空格/Tab）统一规整为 　　；
+ * - 其余非空行补 　　 前缀。
+ */
+export function ensureParagraphIndent(text: string): string {
+  return text
+    .split('\n')
+    .map((line) => {
+      const trimmed = line.replace(/^[ \t\u3000]+/, '');
+      if (!trimmed) return '';
+      return PARAGRAPH_INDENT + trimmed;
+    })
+    .join('\n');
+}
+
+/** 判断某个偏移是否位于自然段开头（正文起始或紧跟换行），用于给插入片段补缩进 */
+export function atParagraphStart(text: string, offset: number): boolean {
+  return offset === 0 || text[offset - 1] === '\n';
+}

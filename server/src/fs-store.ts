@@ -115,11 +115,15 @@ function requireSlug(title: string): string {
 /** 完整落盘一份由向导生成的书稿骨架 */
 export function saveProjectBundle(
   input: Omit<Bundle, 'meta'>,
-  metaInput: { title: string; logline: string },
+  metaInput: { title: string; logline: string; wordsPerChapter?: number },
   chapters: ChapterFile[],
 ): ProjectMeta {
   // 先在内存里把章节正文写入临时目录，避免半成品；简化做法：先建项目再依次写
-  const meta = createProject({ title: metaInput.title, logline: metaInput.logline });
+  const meta = createProject({
+    title: metaInput.title,
+    logline: metaInput.logline,
+    ...(metaInput.wordsPerChapter ? { wordsPerChapter: metaInput.wordsPerChapter } : {}),
+  });
   const slug = meta.slug;
   try {
     writeJson(jfile(slug, 'outline.json'), input.outline);
@@ -257,11 +261,11 @@ function toRaw(doc: ChapterDoc): string {
   return fm + doc.content;
 }
 
-/** 保存正文，返回字数。新内容比旧内容短 30% 以上时自动备份旧稿。 */
-export function saveChapterBody(slug: string, ch: ChapterFile): number {
+/** 保存正文，返回字数。新内容比旧内容短 30% 以上（或 forceBackup）时先把旧稿存入备份。 */
+export function saveChapterBody(slug: string, ch: ChapterFile, forceBackup = false): number {
   const file = chapterPath(slug, ch.id);
   const prevRaw = readText(file);
-  if (prevRaw && ch.content.length < prevRaw.length * 0.7) {
+  if (forceBackup || (prevRaw && ch.content.length < prevRaw.length * 0.7)) {
     backupChapter(slug, ch.id, prevRaw);
   }
   atomicWriteText(file, toRaw(ch));
@@ -272,6 +276,34 @@ export function saveChapterBody(slug: string, ch: ChapterFile): number {
 export function readChapter(slug: string, id: string): ChapterFile {
   const doc = parseChapterFile(readText(chapterPath(slug, id)), id);
   return doc;
+}
+
+export interface BackupInfo { stamp: string; epoch: number; chars: number; title: string }
+
+/** 某章的全部历史备份，新的在前 */
+export function listChapterBackups(slug: string, id: string): BackupInfo[] {
+  if (!CHAPTER_ID_RE.test(id)) throw new Error(`非法章节 id：${id}`);
+  const dir = path.join(chaptersDir(slug), '.backups', id);
+  if (!fs.existsSync(dir)) return [];
+  return fs.readdirSync(dir)
+    .filter((f) => f.endsWith('.md'))
+    .sort()
+    .reverse()
+    .map((f) => {
+      const doc = parseChapterFile(readText(path.join(dir, f)), id);
+      // 文件名是"冒号/点换成 -"的 ISO 时间，还原成可解析的 ISO 后取 epoch
+      const iso = f.replace(/\.md$/, '').replace(/^(\d{4}-\d{2}-\d{2})T(\d{2})-(\d{2})-(\d{2})-(\d{3})Z$/, '$1T$2:$3:$4.$5Z');
+      const epoch = Date.parse(iso) || 0;
+      return { stamp: f, epoch, chars: countChars(doc.content), title: doc.title };
+    });
+}
+
+/** 读取一份历史备份 */
+export function readChapterBackup(slug: string, id: string, stamp: string): ChapterFile {
+  if (!CHAPTER_ID_RE.test(id)) throw new Error(`非法章节 id：${id}`);
+  if (!/^[\w\-]+\.md$/.test(stamp)) throw new Error(`非法备份文件名：${stamp}`);
+  const file = path.join(chaptersDir(slug), '.backups', id, stamp);
+  return parseChapterFile(readText(file), id);
 }
 
 /** 全部章节的索引信息（含字数），按 id 排序 */

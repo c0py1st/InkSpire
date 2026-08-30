@@ -48,6 +48,7 @@ export interface ProjectMeta {
   logline: string;
   createdAt: string;
   updatedAt: string;
+  wordsPerChapter?: number;   // 每章目标字数（向导里设置，用于编辑器进度提示）
 }
 
 export interface Suggestion {

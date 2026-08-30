@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import type {
   AppConfig, Bundle, ChapterStatus, CharacterCard, Outline, ProjectMeta, ProposalKind,
 } from '../../../shared/src/types';
+import { atParagraphStart, ensureParagraphIndent } from '../../../shared/src/util';
 import { api } from '../api/client';
 
 export type CenterView = 'outline' | 'editor' | 'bible';
@@ -65,6 +66,7 @@ interface Store {
   chapter: ChapterDraft | null;
   saveState: SaveState;
   generating: boolean;
+  generatingChapterId: string | null;   // 正在生成的目标章（可能不是当前打开的章）
   selection: Selection | null;
   pendingProposal: { kind: ProposalKind; instruction: string; nonce: number } | null;
   suggestionsSeen: number;
@@ -89,11 +91,13 @@ interface Store {
   openChapter: (id: string) => Promise<void>;
   setContent: (text: string) => void;
   setStreamContent: (text: string) => void;
-  finishGeneration: () => Promise<void>;
   setChapterTitle: (title: string) => void;
   setChapterStatus: (status: ChapterStatus) => void;
   saveChapter: () => Promise<void>;
   applyReplacement: (start: number, end: number, text: string) => Promise<void>;
+
+  startGeneration: (mode: 'full' | 'continue') => Promise<void>;
+  cancelGeneration: () => void;
 
   setSelection: (sel: Selection | null) => void;
   requestProposal: (kind: ProposalKind, instruction?: string) => void;
@@ -111,6 +115,7 @@ interface Store {
 
 let saveTimer: ReturnType<typeof setTimeout> | null = null;
 let toastSeq = 1;
+let genCtl: AbortController | null = null;
 
 export const useStore = create<Store>((set, get) => ({
   theme: initialThemePref(),
@@ -129,6 +134,7 @@ export const useStore = create<Store>((set, get) => ({
   chapter: null,
   saveState: 'idle',
   generating: false,
+  generatingChapterId: null,
   selection: null,
   pendingProposal: null,
   suggestionsSeen: 0,
@@ -188,6 +194,10 @@ export const useStore = create<Store>((set, get) => ({
   },
 
   backHome() {
+    const prev = get();
+    if (prev.chapter && prev.saveState === 'dirty') {
+      void prev.saveChapter();
+    }
     set({ slug: null, bundle: null, chapter: null, centerView: 'outline' });
     void get().loadProjects();
   },
@@ -200,12 +210,21 @@ export const useStore = create<Store>((set, get) => ({
   },
 
   async openChapter(id) {
+    // 冲刷上一章 900ms 防抖窗口内尚未落盘的输入，避免切章丢字。
+    // （后台生成只写目标章，不影响这里）
+    const prev = get();
+    if (prev.chapter && prev.saveState === 'dirty') {
+      await prev.saveChapter();
+    }
     const { slug } = get();
     if (!slug) return;
     try {
       const ch = await api.getChapter(slug, id);
-      set({ chapter: { id: ch.id, title: ch.title, status: ch.status, content: ch.content }, saveState: 'idle', selection: null });
+      // 段首缩进规整：老章节第一次打开时自动补 　　 并回存
+      const normalized = ensureParagraphIndent(ch.content);
+      set({ chapter: { id: ch.id, title: ch.title, status: ch.status, content: normalized }, saveState: 'idle', selection: null });
       get().setView('editor');
+      if (normalized !== ch.content) void get().saveChapter();
     } catch (err) {
       get().toast(`打开章节失败：${(err as Error).message}`, 'error');
     }
@@ -225,12 +244,82 @@ export const useStore = create<Store>((set, get) => ({
     set({ chapter: { ...ch, content: text } });
   },
 
-  async finishGeneration() {
-    const { slug, chapter } = get();
-    if (!slug || !chapter) return;
-    const status: ChapterStatus = chapter.status === 'todo' ? 'draft' : chapter.status;
-    set({ chapter: { ...chapter, status }, generating: false });
-    await get().saveChapter();
+  /**
+   * 按 beat 生成一章正文。
+   * 生成在"后台"进行：期间可以随意切章/切视图；delta 只写入目标章（若它正被打开则实时可见），
+   * 结束（完成或用户停止）后无论打开的是哪章，都会把已生成内容保存回目标章。
+   */
+  async startGeneration(mode) {
+    const st = get();
+    if (!st.slug || !st.chapter || st.generating) return;
+    const slug = st.slug;
+    const targetId = st.chapter.id;
+    const targetTitle = st.chapter.title;
+    // 目标章之前的状态：未写→草稿，草稿/定稿→保持
+    const prevStatus: ChapterStatus = (() => {
+      for (const vol of st.bundle?.outline?.volumes ?? []) {
+        const hit = vol.chapters.find((c) => c.id === targetId);
+        if (hit) return hit.status;
+      }
+      return 'draft';
+    })();
+    const status: ChapterStatus = prevStatus === 'todo' ? 'draft' : prevStatus;
+
+    const ctl = new AbortController();
+    genCtl = ctl;
+    set({ generating: true, generatingChapterId: targetId });
+
+    let acc = mode === 'continue' ? st.chapter.content : '';
+    if (mode === 'full' && get().chapter?.id === targetId) get().setStreamContent('');
+
+    let aborted = false;
+    try {
+      await api.generateChapter(slug, targetId, mode, (delta) => {
+        acc += delta;
+        const cur = get();
+        if (cur.chapter?.id === targetId) cur.setStreamContent(acc);
+      }, ctl.signal);
+    } catch (err) {
+      aborted = ctl.signal.aborted;
+      if (!aborted) {
+        set({ generating: false, generatingChapterId: null });
+        genCtl = null;
+        get().toast(`生成失败：${(err as Error).message}`, 'error');
+        return;
+      }
+    }
+    genCtl = null;
+
+    // 无论当前打开的是哪一章，都把结果保存回目标章（生成结果统一做段首缩进规整）
+    acc = ensureParagraphIndent(acc);
+    try {
+      const title = (() => {
+        for (const vol of get().bundle?.outline?.volumes ?? []) {
+          const hit = vol.chapters.find((c) => c.id === targetId);
+          if (hit) return hit.title;
+        }
+        return targetTitle;
+      })();
+      const { wordCount } = await api.saveChapter(slug, targetId, { content: acc, status, title });
+      const cur = get();
+      if (cur.bundle) {
+        set({ bundle: { ...cur.bundle, wordCounts: { ...cur.bundle.wordCounts, [targetId]: wordCount } } });
+      }
+      if (cur.chapter?.id === targetId) {
+        set({ chapter: { ...cur.chapter, content: acc, status }, saveState: 'saved' });
+      }
+      get().toast(
+        aborted ? `已停止，《${title}》保留了 ${wordCount.toLocaleString()} 字` : `《${title}》生成完毕（${wordCount.toLocaleString()} 字）`,
+        'ok',
+      );
+    } catch (err) {
+      get().toast(`保存生成结果失败：${(err as Error).message}`, 'error');
+    }
+    set({ generating: false, generatingChapterId: null });
+  },
+
+  cancelGeneration() {
+    genCtl?.abort();
   },
 
   setChapterTitle(title) {
@@ -298,7 +387,10 @@ export const useStore = create<Store>((set, get) => ({
   async applyReplacement(start, end, text) {
     const ch = get().chapter;
     if (!ch) return;
-    const next = ch.content.slice(0, start) + text + ch.content.slice(end);
+    // 片段落在自然段开头时，让替换文本也保持段首缩进
+    const next = ch.content.slice(0, start)
+      + (atParagraphStart(ch.content, start) ? ensureParagraphIndent(text) : text)
+      + ch.content.slice(end);
     set({ chapter: { ...ch, content: next } });
     await get().saveChapter();
   },

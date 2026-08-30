@@ -114,7 +114,11 @@ export function Wizard() {
         })),
       };
       const meta = await api.completeProject({
-        meta: { title: title || kernel.premise.slice(0, 12), logline: logline || kernel.premise },
+        meta: {
+          title: title || kernel.premise.slice(0, 12),
+          logline: logline || kernel.premise,
+          wordsPerChapter: scale.wordsPerChapter,
+        },
         outline,
         characters: bibleChars,
         worldview,
