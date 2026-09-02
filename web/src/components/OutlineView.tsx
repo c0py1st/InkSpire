@@ -9,6 +9,8 @@ export function OutlineView() {
   const { bundle, persistOutline, updateOutlineLocal, toast, openChapter, setView, reloadBundle } = useStore();
   const [refining, setRefining] = useState<number | null>(null);
   const [confirmVol, setConfirmVol] = useState<number | null>(null);
+  /** 卷抽屉：默认全部收起，按卷 id 记录展开状态（用 id 而非下标，拖动排序后不错位） */
+  const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
 
   if (!bundle) return <div className="center-scroll" />;
   const outlineNullable = bundle.outline;
@@ -41,6 +43,8 @@ export function OutlineView() {
 
   function addChapter(vi: number) {
     const vol = outline.volumes[vi];
+    // 展开目标卷，让新章立刻可见
+    setExpandedIds((prev) => new Set(prev).add(vol.id));
     mutateVolumes((vs) => {
       vs[vi].chapters = [
         ...vs[vi].chapters,
@@ -113,15 +117,36 @@ export function OutlineView() {
         <Field label="结局走向"><textarea style={{ minHeight: 56 }} value={outline.endingVision} onChange={(e) => editOutline({ endingVision: e.target.value })} onBlur={commitOutline} /></Field>
         <Field label="文风约定"><textarea style={{ minHeight: 70 }} value={outline.styleGuide} onChange={(e) => editOutline({ styleGuide: e.target.value })} onBlur={commitOutline} /></Field>
 
-        {outline.volumes.map((vol, vi) => (
+        {outline.volumes.map((vol, vi) => {
+          const expanded = expandedIds.has(vol.id);
+          return (
           <div key={vol.id} className="vol-block">
             <div className="vol-head">
+              <button
+                className={`icon-btn vol-chev${expanded ? ' open' : ''}`}
+                title={expanded ? '收起章节（收进抽屉）' : '展开章节'}
+                onClick={() => setExpandedIds((prev) => {
+                  const next = new Set(prev);
+                  if (next.has(vol.id)) next.delete(vol.id);
+                  else next.add(vol.id);
+                  return next;
+                })}
+              >▶</button>
               <input
                 type="text" className="vol-title" value={vol.title}
                 onChange={(e) => mutateVolumes((vs) => { vs[vi].title = e.target.value; return vs; }, false)}
                 onBlur={(e) => mutateVolumes((vs) => { vs[vi].title = e.target.value; return vs; })}
               />
-              <span style={{ color: 'var(--text-faint)', fontSize: 11.5 }}>{vol.chapters.length} 章</span>
+              <span
+                className="vol-count-hit"
+                title={expanded ? '收起章节' : '展开章节'}
+                onClick={() => setExpandedIds((prev) => {
+                  const next = new Set(prev);
+                  if (next.has(vol.id)) next.delete(vol.id);
+                  else next.add(vol.id);
+                  return next;
+                })}
+              >{vol.chapters.length} 章</span>
               <button className="icon-btn" title="上移" onClick={() => moveVolume(vi, -1)}>↑</button>
               <button className="icon-btn" title="下移" onClick={() => moveVolume(vi, 1)}>↓</button>
               <Btn small disabled={refining !== null} onClick={() => setConfirmVol(vi)} title="AI 会重写本卷每一章的 beat，已有正文不会被删除">
@@ -137,7 +162,7 @@ export function OutlineView() {
               />
             </div>
 
-            {vol.chapters.map((c, ci) => (
+            {expanded && vol.chapters.map((c, ci) => (
               <div key={c.id} className="ch-edit">
                 <div className="row1">
                   <span className="ch-id">{c.id}</span>
@@ -184,11 +209,14 @@ export function OutlineView() {
                 </div>
               </div>
             ))}
-            <div style={{ padding: '8px 12px' }}>
-              <Btn small ghost onClick={() => addChapter(vi)}>＋ 加一章</Btn>
-            </div>
+            {expanded && (
+              <div style={{ padding: '8px 12px' }}>
+                <Btn small ghost onClick={() => addChapter(vi)}>＋ 加一章</Btn>
+              </div>
+            )}
           </div>
-        ))}
+          );
+        })}
 
         <Btn ghost onClick={() => mutateVolumes((vs) => [...vs, { id: `v${String(vs.length + 1).padStart(2, '0')}`, title: `新卷 ${vs.length + 1}`, summary: '', chapters: [] }])}>
           ＋ 加一卷

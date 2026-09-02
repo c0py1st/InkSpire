@@ -63,9 +63,10 @@ async function streamToTask(
   cfg: AppConfig,
   messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }>,
   kind: 'json' | 'prose' | 'summary',
+  maxTokens?: number,
 ): Promise<string> {
   let full = '';
-  for await (const delta of streamChat(cfg, profile!, messages, { signal, kind })) {
+  for await (const delta of streamChat(cfg, profile!, messages, { signal, kind, maxTokens })) {
     full += delta;
     sse.delta(delta);
   }
@@ -82,7 +83,7 @@ aiRouter.post('/wizard/kernel', (req, res) => {
     const full = await streamToTask(sse, signal, creativeProfile(cfg), cfg, [
       { role: 'system', content: prompt.system },
       { role: 'user', content: prompt.user },
-    ], 'json');
+    ], 'json', 8192);
     sse.send({ type: 'final', kernel: extractJson<Kernel>(full) });
   });
 });
@@ -95,7 +96,7 @@ aiRouter.post('/wizard/volumes', (req, res) => {
     const full = await streamToTask(sse, signal, creativeProfile(cfg), cfg, [
       { role: 'system', content: prompt.system },
       { role: 'user', content: prompt.user },
-    ], 'json');
+    ], 'json', 8192);
     sse.send({ type: 'final', volumes: extractJson<{ volumes: Array<{ title: string; summary: string }> }>(full).volumes });
   });
 });
@@ -114,7 +115,7 @@ aiRouter.post('/wizard/beats', (req, res) => {
     const full = await streamToTask(sse, signal, creativeProfile(cfg), cfg, [
       { role: 'system', content: prompt.system },
       { role: 'user', content: prompt.user },
-    ], 'json');
+    ], 'json', 8192);
     sse.send({ type: 'final', chapters: extractJson<{ chapters: Array<{ title: string; beat: string; pov?: string; characters?: string[] }> }>(full).chapters });
   });
 });
@@ -127,7 +128,7 @@ aiRouter.post('/wizard/bible', (req, res) => {
     const full = await streamToTask(sse, signal, creativeProfile(cfg), cfg, [
       { role: 'system', content: prompt.system },
       { role: 'user', content: prompt.user },
-    ], 'json');
+    ], 'json', 8192);
     sse.send({ type: 'final', bible: extractJson<{ characters: CharacterCard[]; worldview: string }>(full) });
   });
 });
@@ -375,7 +376,7 @@ aiRouter.post('/projects/:slug/refine-volume/:volIndex', async (req, res) => {
     const raw = await chatOnce(cfg, creativeProfile(cfg), [
       { role: 'system', content: prompt.system },
       { role: 'user', content: prompt.user },
-    ], { kind: 'json', maxTokens: 4000 });
+    ], { kind: 'json', maxTokens: 8192 });
     const parsed = extractJson<{ chapters: Array<{ title: string; beat: string; pov?: string; characters?: string[] }> }>(raw);
     const keepIds = vol.chapters.map((c, i) => c.id).slice(0, parsed.chapters.length);
     const { chapterId: mkId } = await import('../../../shared/src/util');

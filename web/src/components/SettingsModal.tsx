@@ -322,7 +322,7 @@ function ProvDetail(props: {
             value={p.maxTokens ?? ''}
             onChange={(e) => props.onChange({ maxTokens: e.target.value === '' ? undefined : Number(e.target.value) })}
           />
-          <small>一次最多生成多少字；建议 ≥ 每章目标字数 × 2</small>
+          <small>一次最多生成多少字；建议 ≥ 每章目标字数 × 2。大纲类 JSON 任务会自动使用不低于 8192 的上限，不受此项过低影响</small>
         </label>
         <label className="param">
           <span className="cap" title="模型上下文长度，用于估算前情摘要注入预算">上下文窗口 tokens</span>

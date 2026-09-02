@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { CharacterCard, Kernel } from '../../../shared/src/types';
 import { api } from '../api/client';
 import { useStore } from '../state/store';
@@ -17,6 +17,7 @@ export function Wizard() {
   const [busy, setBusy] = useState(false);
   const [stream, setStream] = useState('');
   const streamRef = useRef<HTMLDivElement>(null);
+  const autoBeatRef = useRef(false); // 进入细纲页时自动生成第一卷，只触发一次，避免失败后循环重试
 
   const [idea, setIdea] = useState('');
   const [scale, setScale] = useState({ volumeCount: 3, chaptersPerVolume: 10, wordsPerChapter: 2500 });
@@ -29,6 +30,22 @@ export function Wizard() {
   const [title, setTitle] = useState('');
   const [logline, setLogline] = useState('');
 
+  /** 哪些步骤已经"解锁"：只有解锁的步骤才允许点击跳转查看 */
+  const reach = useMemo(() => [
+    true,
+    !!kernel,
+    !!kernel,
+    volumes.length > 0,
+    volumes.some((v) => v.chapters.length > 0),
+    bibleChars.length > 0,
+  ], [kernel, volumes, bibleChars]);
+
+  const gotoStep = (i: number) => {
+    if (!reach[i]) return;
+    setStep(i);
+    setStream('');
+  };
+
   function patchVol(i: number, patch: Partial<WizVolume>) {
     setVolumes((vs) => vs.map((v, k) => (k === i ? { ...v, ...patch } : v)));
   }
@@ -36,14 +53,16 @@ export function Wizard() {
     setVolumes((vs) => vs.map((v, k) => (k === vi ? { ...v, chapters: v.chapters.map((c, j) => (j === ci ? { ...c, ...patch } : c)) } : v)));
   }
 
-  async function run(task: () => Promise<void>) {
-    if (busy) return;
+  /** 执行一个生成任务：返回是否成功。busy 期间直接忽略新的触发。 */
+  async function run(task: () => Promise<boolean>): Promise<boolean> {
+    if (busy) return false;
     setBusy(true);
     setStream('');
     try {
-      await task();
+      return await task();
     } catch (err) {
       toast((err as Error).message, 'error');
+      return false;
     } finally {
       setBusy(false);
     }
@@ -61,23 +80,37 @@ export function Wizard() {
 
   const genKernel = () =>
     run(async () => {
+      if (kernel && !window.confirm('重新生成会覆盖当前内核（包括你手动修改过的内容），继续？')) return false;
       const final = await api.wizardKernel(idea, scale, onDelta);
       if (!final?.kernel) throw new Error('未取到内核结果');
       setKernel(final.kernel);
       setStep(1);
+      return true;
     });
 
   const genVolumes = () =>
     run(async () => {
-      if (!kernel) return;
+      if (!kernel) {
+        toast('请先生成故事内核', 'error');
+        return false;
+      }
       const final = await api.wizardVolumes(kernel, scale.volumeCount, onDelta);
       if (!final?.volumes?.length) throw new Error('未取到分卷结果');
       setVolumes(final.volumes.map((v) => ({ title: v.title, summary: v.summary, chapters: [] })));
+      return true;
     });
+
+  const regenVolumes = () => {
+    if (volumes.some((v) => v.chapters.length) && !window.confirm('重新生成分卷会覆盖现有分卷与章节细纲，继续？')) return;
+    void genVolumes();
+  };
 
   const genBeats = (vi: number) =>
     run(async () => {
-      if (!kernel) return;
+      if (!kernel) {
+        toast('请先生成故事内核', 'error');
+        return false;
+      }
       const final = await api.wizardBeats(kernel, volumes as never, vi, scale.chaptersPerVolume, onDelta);
       if (!final?.chapters?.length) throw new Error('未取到章节细纲');
       patchVol(vi, {
@@ -85,20 +118,25 @@ export function Wizard() {
           title: c.title, beat: c.beat, pov: c.pov ?? '', characters: (c.characters ?? []).join('、'),
         })),
       });
+      return true;
     });
 
   const genBible = () =>
     run(async () => {
-      if (!kernel) return;
+      if (!kernel) {
+        toast('请先生成故事内核', 'error');
+        return false;
+      }
       const final = await api.wizardBible(kernel, volumes as never, onDelta);
       if (!final?.bible) throw new Error('未取到设定集');
       setBibleChars(final.bible.characters.map((c, i) => ({ ...c, id: `wc-${i}` })));
       setWorldview(final.bible.worldview);
+      return true;
     });
 
   const finish = () =>
     run(async () => {
-      if (!kernel) return;
+      if (!kernel) return false;
       const outline = {
         premise: kernel.premise,
         genre: kernel.genre,
@@ -123,11 +161,26 @@ export function Wizard() {
         characters: bibleChars,
         worldview,
       });
-      setWizardOpen(false);
       await openProject(meta.slug);
+      setWizardOpen(false);
+      return true;
     });
 
-  const canNext = [idea.trim().length > 10, !!kernel, volumes.length > 0, volumes.some((v) => v.chapters.length > 0), true, title.trim().length > 0][step];
+  /** 进入章节细纲页时，如果所有卷都还没有细纲，自动生成第一卷（仅一次） */
+  useEffect(() => {
+    if (step === 3 && !busy && volumes.length > 0 && volumes.every((v) => v.chapters.length === 0) && !autoBeatRef.current) {
+      autoBeatRef.current = true;
+      void genBeats(0);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [step, volumes, busy]);
+
+  const anyChapters = volumes.some((v) => v.chapters.length > 0);
+
+  function closeWizard() {
+    if (busy && !window.confirm('正在生成中，关闭会丢失本步结果，确定关闭？')) return;
+    setWizardOpen(false);
+  }
 
   return (
     <div className="modal-mask">
@@ -136,11 +189,19 @@ export function Wizard() {
           开新书
           <div className="wiz-steps">
             {STEPS.map((s, i) => (
-              <span key={s} className={`step${i === step ? ' active' : ''}${i < step ? ' done' : ''}`}>{s}</span>
+              <button
+                key={s}
+                className={`step${i === step ? ' active' : ''}${i < step && reach[i] ? ' done' : ''}`}
+                disabled={i > 0 && !reach[i]}
+                title={reach[i] ? `回到「${s}」查看或编辑（不会重新生成）` : '完成前置步骤后可用'}
+                onClick={() => gotoStep(i)}
+              >
+                {s}
+              </button>
             ))}
           </div>
           <div style={{ flex: 1 }} />
-          <Btn ghost small onClick={() => setWizardOpen(false)}>关闭</Btn>
+          <Btn ghost small onClick={closeWizard}>关闭</Btn>
         </div>
 
         <div className="m-body">
@@ -174,9 +235,17 @@ export function Wizard() {
                     onChange={(e) => setScale({ ...scale, wordsPerChapter: Math.max(500, Number(e.target.value) || 2000) })} />
                 </Field>
               </div>
-              <Btn primary disabled={busy || idea.trim().length <= 10} onClick={genKernel}>
-                生成故事内核 →
-              </Btn>
+              <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+                <Btn primary disabled={busy || idea.trim().length <= 10} onClick={genKernel}>
+                  {kernel ? '重新生成内核并继续 →' : '生成故事内核 →'}
+                </Btn>
+                {kernel && !busy && (
+                  <Btn onClick={() => setStep(1)} title="保留当前内核，直接回去查看或编辑">沿用当前内核 →</Btn>
+                )}
+                {idea.trim().length <= 10 && (
+                  <span style={{ fontSize: 11.5, color: 'var(--text-faint)' }}>构想至少写 10 个字</span>
+                )}
+              </div>
             </>
           )}
 
@@ -189,15 +258,20 @@ export function Wizard() {
               <Field label="文风约定" hint="会写进每一章的生成约束里"><textarea style={{ minHeight: 70 }} value={kernel.styleGuide} onChange={(e) => setKernel({ ...kernel, styleGuide: e.target.value })} /></Field>
               <div style={{ display: 'flex', gap: 10 }}>
                 <Btn disabled={busy} onClick={() => setStep(0)}>← 返回</Btn>
-                <Btn disabled={busy} onClick={genKernel}>重掷内核</Btn>
+                <Btn disabled={busy} onClick={genKernel}>重新生成内核</Btn>
                 <div style={{ flex: 1 }} />
-                <Btn primary disabled={busy} onClick={() => setStep(2)}>继续 · 生成分卷 →</Btn>
+                <Btn primary disabled={busy} onClick={async () => { if (await genVolumes()) setStep(2); }}>继续 · 生成分卷 →</Btn>
               </div>
             </>
           )}
 
           {step === 2 && (
             <>
+              {volumes.length === 0 && !busy && (
+                <div style={{ color: 'var(--text-faint)', fontSize: 12.5, marginBottom: 10 }}>
+                  还没有分卷。点下方「生成分卷」，或用「＋ 加一卷」手动搭建。
+                </div>
+              )}
               {volumes.map((v, i) => (
                 <div key={i} className="vol-block" style={{ padding: 12 }}>
                   <div className="row1" style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
@@ -210,11 +284,12 @@ export function Wizard() {
                 </div>
               ))}
               <Btn small ghost onClick={() => setVolumes((vs) => [...vs, { title: `新卷 ${vs.length + 1}`, summary: '', chapters: [] }])}>＋ 加一卷</Btn>
-              <div style={{ display: 'flex', gap: 10, marginTop: 14 }}>
+              <div style={{ display: 'flex', gap: 10, marginTop: 14, alignItems: 'center' }}>
                 <Btn disabled={busy} onClick={() => setStep(1)}>← 返回</Btn>
-                <Btn disabled={busy} onClick={genVolumes}>重掷分卷</Btn>
+                <Btn disabled={busy} onClick={regenVolumes}>{volumes.length ? '重新生成分卷' : '生成分卷'}</Btn>
                 <div style={{ flex: 1 }} />
-                <Btn primary disabled={busy} onClick={() => { setActiveVol(0); setStep(3); }}>继续 · 细化章节 →</Btn>
+                {!volumes.length && <span style={{ fontSize: 11.5, color: 'var(--text-faint)' }}>至少需要一卷才能继续</span>}
+                <Btn primary disabled={busy || !volumes.length} onClick={() => setStep(3)}>继续 · 细化章节 →</Btn>
               </div>
             </>
           )}
@@ -224,7 +299,7 @@ export function Wizard() {
               <div className="left-tabs" style={{ marginBottom: 14 }}>
                 {volumes.map((v, i) => (
                   <button key={i} className={i === activeVol ? 'active' : ''} onClick={() => setActiveVol(i)}>
-                    {v.title || `卷${i + 1}`}
+                    {v.title || `卷${i + 1}`}{v.chapters.length ? ' ✓' : ''}
                   </button>
                 ))}
               </div>
@@ -261,17 +336,23 @@ export function Wizard() {
                   )}
                 </div>
               )}
-              <div style={{ display: 'flex', gap: 10, marginTop: 14 }}>
+              <div style={{ display: 'flex', gap: 10, marginTop: 14, alignItems: 'center' }}>
                 <Btn disabled={busy} onClick={() => setStep(2)}>← 返回</Btn>
                 <div style={{ flex: 1 }} />
-                <Btn primary disabled={busy || !volumes.some((v) => v.chapters.length)} onClick={() => setStep(4)}>继续 · 生成设定集 →</Btn>
+                {!anyChapters && <span style={{ fontSize: 11.5, color: 'var(--text-faint)' }}>先为至少一卷生成细纲才能继续</span>}
+                <Btn primary disabled={busy || !anyChapters} onClick={() => setStep(4)}>继续 · 生成设定集 →</Btn>
               </div>
             </>
           )}
 
           {step === 4 && (
             <>
-              <Btn disabled={busy} onClick={genBible}>{bibleChars.length ? '重新生成设定集' : '生成设定集'}</Btn>
+              <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+                <Btn disabled={busy} onClick={genBible}>{bibleChars.length ? '重新生成设定集' : '生成设定集'}</Btn>
+                {!bibleChars.length && !busy && (
+                  <span style={{ fontSize: 11.5, color: 'var(--text-faint)' }}>点左侧按钮生成人物卡与世界观，生成后可逐张修改</span>
+                )}
+              </div>
               {bibleChars.length > 0 && (
                 <div style={{ marginTop: 14 }}>
                   {bibleChars.map((c, i) => (
@@ -291,6 +372,7 @@ export function Wizard() {
               <div style={{ display: 'flex', gap: 10, marginTop: 14 }}>
                 <Btn disabled={busy} onClick={() => setStep(3)}>← 返回</Btn>
                 <div style={{ flex: 1 }} />
+                {!bibleChars.length && <span style={{ fontSize: 11.5, color: 'var(--text-faint)' }}>先生成设定集才能继续</span>}
                 <Btn primary disabled={busy || !bibleChars.length} onClick={() => setStep(5)}>继续 · 成书 →</Btn>
               </div>
             </>
@@ -308,6 +390,7 @@ export function Wizard() {
               <div style={{ display: 'flex', gap: 10 }}>
                 <Btn disabled={busy} onClick={() => setStep(4)}>← 返回</Btn>
                 <div style={{ flex: 1 }} />
+                {!title.trim() && <span style={{ fontSize: 11.5, color: 'var(--text-faint)' }}>填写书名后即可落盘</span>}
                 <Btn primary disabled={busy || !title.trim()} onClick={finish}>落盘成书并打开</Btn>
               </div>
             </>

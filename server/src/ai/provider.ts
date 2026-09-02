@@ -146,8 +146,11 @@ export async function* streamChat(
       model: profile.model,
       messages,
       stream: true,
-      temperature: opts.temperature ?? profile.temperature ?? 1.1,
+      temperature: opts.temperature ?? (opts.kind === 'json' ? 1.0 : profile.temperature ?? 1.1),
       max_tokens: opts.maxTokens ?? profile.maxTokens ?? 8192,
+      // JSON 结构化任务关闭深度思考（官方 thinking 参数）：推理模型可能把整个输出预算
+      // 耗在思考上导致 content 为空，结构化任务也不需要长思考
+      ...(opts.kind === 'json' ? { thinking: { type: 'disabled' } } : {}),
     }),
     signal: opts.signal,
   });
