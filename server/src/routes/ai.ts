@@ -152,6 +152,8 @@ interface BgGenTask {
   chars: number;
   error?: string;
   wordCount?: number;
+  /** finish_reason=length：正文达到输出上限被截断，可续写补完 */
+  truncated?: boolean;
   ctl: AbortController;
 }
 
@@ -214,20 +216,45 @@ async function runBgGeneration(task: BgGenTask): Promise<void> {
     const status: ChapterStatus = prevStatus === 'todo' ? 'draft' : prevStatus;
 
     if (mode === 'continue' && existing) acc = existing.content;
-    for await (const delta of streamChat(cfg, creativeProfile(cfg), [
-      { role: 'system', content: prompt.system },
-      { role: 'user', content: prompt.user },
-    ], { signal: task.ctl.signal, kind: 'prose' })) {
-      acc += delta;
-      task.chars = countChars(acc);
-      emitGen({ type: 'delta', text: delta });
+    const startChars = countChars(acc);
+    let finishReason = '';
+
+    // 上游偶发返回空流（高峰期网关过载），自动重试并留间隔
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      finishReason = '';
+      for await (const delta of streamChat(cfg, creativeProfile(cfg), [
+        { role: 'system', content: prompt.system },
+        { role: 'user', content: prompt.user },
+      ], {
+        signal: task.ctl.signal, kind: 'prose',
+        onMeta: (m) => {
+          finishReason = m.finishReason ?? finishReason;
+          if (m.usage) console.error('[moge:bggen] usage:', JSON.stringify(m.usage), 'finish:', finishReason);
+        },
+      })) {
+        acc += delta;
+        task.chars = countChars(acc);
+        emitGen({ type: 'delta', text: delta });
+      }
+      if (countChars(acc) > startChars || task.ctl.signal.aborted) break;
+      if (attempt < 3) {
+        acc = mode === 'continue' && existing ? existing.content : '';
+        task.chars = countChars(acc);
+        console.error('[moge:bggen] 模型未返回正文（空流），2 秒后自动重试', attempt);
+        await new Promise((r) => setTimeout(r, 2000));
+      }
+    }
+
+    if (countChars(acc) <= startChars) {
+      throw new Error('模型未返回任何正文（已自动重试 3 次），请稍后再试');
     }
 
     acc = ensureParagraphIndent(acc);
     const wordCount = saveChapterBody(slug, { id: chapterId, title, status, content: acc });
     task.status = 'done';
     task.wordCount = wordCount;
-    emitGen({ type: 'done', wordCount });
+    task.truncated = finishReason === 'length';
+    emitGen({ type: 'done', wordCount, truncated: task.truncated });
   } catch (err) {
     const aborted = task.ctl.signal.aborted;
     // 出错/停止时同样保留已生成部分，直接落盘
@@ -275,7 +302,7 @@ aiRouter.get('/projects/:slug/generation-status/:chapterId', (req, res) => {
   if (!bgGen || bgGen.slug !== slug || bgGen.chapterId !== chapterId) {
     return res.json({ status: 'idle', chars: 0 });
   }
-  res.json({ status: bgGen.status, chars: bgGen.chars, error: bgGen.error, wordCount: bgGen.wordCount });
+  res.json({ status: bgGen.status, chars: bgGen.chars, error: bgGen.error, wordCount: bgGen.wordCount, truncated: bgGen.truncated });
 });
 
 aiRouter.post('/projects/:slug/generation-cancel/:chapterId', (req, res) => {

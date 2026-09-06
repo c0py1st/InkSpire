@@ -142,7 +142,7 @@ export const api = {
   startBackgroundGeneration: (slug: string, chapterId: string, mode: 'full' | 'continue') =>
     post<{ started: true }>(`/api/projects/${slug}/generate-bg/${chapterId}`, { mode }),
   generationStatus: (slug: string, chapterId: string) =>
-    get<{ status: 'idle' | 'running' | 'done' | 'error' | 'cancelled'; chars: number; error?: string; wordCount?: number }>(
+    get<{ status: 'idle' | 'running' | 'done' | 'error' | 'cancelled'; chars: number; error?: string; wordCount?: number; truncated?: boolean }>(
       `/api/projects/${slug}/generation-status/${chapterId}`,
     ),
   cancelBackgroundGeneration: (slug: string, chapterId: string) =>

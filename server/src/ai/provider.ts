@@ -16,6 +16,8 @@ export interface StreamOptions {
   signal?: AbortSignal;
   /** 演示模式下用于挑选灌水内容的任务类型 */
   kind?: 'json' | 'prose' | 'summary';
+  /** 流结束时回传 finish_reason 等元信息（如 length=被截断） */
+  onMeta?: (meta: { finishReason?: string; usage?: unknown }) => void;
 }
 
 export class ProviderError extends Error {
@@ -135,15 +137,22 @@ export async function* streamChat(
   }
 
   const url = profile.baseURL.replace(/\/+$/, '') + '/chat/completions';
+  // 正文生成给足输出预算（思考+正文共享 max_tokens；思考长度随任务波动很大，
+  // 过小的上限会把正文拦腰截断）。上限下限只对 DeepSeek 官方端点抬高，
+  // 其他平台保持用户设置，避免超出平台模型上限被 400。
+  const isDeepSeekHost = /deepseek/i.test(profile.baseURL);
+  const maxTokens = opts.maxTokens
+    ?? (isDeepSeekHost ? Math.max(16384, profile.maxTokens ?? 0) : (profile.maxTokens ?? 8192));
   const body = JSON.stringify({
     model: profile.model,
     messages,
     stream: true,
     temperature: opts.temperature ?? (opts.kind === 'json' ? 1.0 : profile.temperature ?? 1.1),
-    max_tokens: opts.maxTokens ?? profile.maxTokens ?? 8192,
-    // JSON 结构化任务关闭深度思考（官方 thinking 参数）：推理模型可能把整个输出预算
-    // 耗在思考上导致 content 为空，结构化任务也不需要长思考
-    ...(opts.kind === 'json' ? { thinking: { type: 'disabled' } } : {}),
+    max_tokens: maxTokens,
+    // DeepSeek 官方端点：关闭深度思考。推理长度不可控（实测会耗尽全部输出预算、
+    // content 为 0 或把正文拦腰截断），结构化与正文任务均禁用；且思考与正文
+    // 共享 max_tokens，禁用后速度与产出都稳定。
+    ...(isDeepSeekHost ? { thinking: { type: 'disabled' }, stream_options: { include_usage: true } } : {}),
   });
 
   // 限流(429)/网络抖动自动退避重试。仅在尚未产出任何增量时重试才安全，
@@ -189,26 +198,39 @@ export async function* streamChat(
     const reader = res.body.getReader();
     const decoder = new TextDecoder();
     let buf = '';
+    let yielded = 0;
+    let lineCount = 0;
+    let rawHead = '';
     while (true) {
       const { done, value } = await reader.read();
       if (done) break;
-      buf += decoder.decode(value, { stream: true });
+      const chunk = decoder.decode(value, { stream: true });
+      if (!rawHead && chunk.trim()) rawHead = chunk.slice(0, 300);
+      buf += chunk;
       let idx: number;
       while ((idx = buf.indexOf('\n')) >= 0) {
         const line = buf.slice(0, idx).trim();
         buf = buf.slice(idx + 1);
+        if (!line) continue;
+        lineCount++;
         if (!line.startsWith('data:')) continue;
         const payload = line.slice(5).trim();
-        if (payload === '[DONE]') return;
+        if (payload === '[DONE]') {
+          if (yielded === 0) console.error('[moge:streamChat] 空流诊断: 收到[DONE]但无增量 status=' + res.status + ' lines=' + lineCount + ' rawHead=' + JSON.stringify(rawHead));
+          return;
+        }
         try {
           const obj = JSON.parse(payload);
           const delta: string | undefined = obj.choices?.[0]?.delta?.content;
-          if (delta) yield delta;
+          if (delta) { yielded++; yield delta; }
+          const fr: string | undefined = obj.choices?.[0]?.finish_reason;
+          if (fr) opts.onMeta?.({ finishReason: fr, usage: obj.usage });
         } catch {
           /* 忽略心跳等非 JSON 行 */
         }
       }
     }
+    if (yielded === 0) console.error('[moge:streamChat] 空流诊断: 流结束无增量 status=' + res.status + ' lines=' + lineCount + ' rawHead=' + JSON.stringify(rawHead));
     return; // 流正常结束
   }
 }

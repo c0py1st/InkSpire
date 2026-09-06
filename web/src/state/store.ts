@@ -99,7 +99,7 @@ interface Store {
   startGeneration: (mode: 'full' | 'continue') => Promise<void>;
   cancelGeneration: () => void;
   syncGenerationStatus: () => Promise<void>;
-  finishGenerationWatch: (status: string, error?: string, wordCount?: number) => Promise<void>;
+  finishGenerationWatch: (status: string, error?: string, wordCount?: number, truncated?: boolean) => Promise<void>;
 
   setSelection: (sel: Selection | null) => void;
   requestProposal: (kind: ProposalKind, instruction?: string) => void;
@@ -298,10 +298,10 @@ export const useStore = create<Store>((set, get) => ({
       s = await api.generationStatus(genSlug, st.generatingChapterId);
     } catch { return; } // 网络抖动，下个轮询再试
     if (s.status === 'running') return;
-    await get().finishGenerationWatch(s.status, s.error, s.wordCount);
+    await get().finishGenerationWatch(s.status, s.error, s.wordCount, s.truncated);
   },
 
-  async finishGenerationWatch(status, error, wordCount) {
+  async finishGenerationWatch(status, error, wordCount, truncated) {
     if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
     if (closeGenStream) { closeGenStream(); closeGenStream = null; }
     const targetId = get().generatingChapterId;
@@ -322,7 +322,14 @@ export const useStore = create<Store>((set, get) => ({
         await fresh.reloadBundle();
       }
       const title = ch.title;
-      if (status === 'done') get().toast(`《${title}》生成完毕（${(wordCount ?? 0).toLocaleString()} 字）`, 'ok');
+      if (status === 'done') {
+        get().toast(
+          truncated
+            ? `《${title}》已生成 ${(wordCount ?? 0).toLocaleString()} 字，达到输出上限被截断——点「续写」可补完`
+            : `《${title}》生成完毕（${(wordCount ?? 0).toLocaleString()} 字）`,
+          truncated ? 'info' : 'ok',
+        );
+      }
       else if (status === 'cancelled') get().toast(`已停止，《${title}》保留了 ${(wordCount ?? 0).toLocaleString()} 字`, 'ok');
       else get().toast(`生成失败：${error ?? '未知错误'}${(wordCount ?? 0) > 0 ? '（已保留部分内容）' : ''}`, 'error');
     } catch (err) {
