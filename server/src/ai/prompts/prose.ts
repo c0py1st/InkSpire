@@ -15,7 +15,7 @@ export interface ChapterContext {
 }
 
 /** 逐章正文的生成提示词。这是"严格按大纲"的核心环节。 */
-export function prosePrompt(ctx: ChapterContext): { system: string; user: string } {
+export function prosePrompt(ctx: ChapterContext, targetWords?: number): { system: string; user: string } {
   const o = ctx.outline;
   const nextBeats = ctx.nextChapters
     .map((c, i) => `下一${i === 0 ? '' : '下'}章《${c.title}》：${c.beat}`)
@@ -50,22 +50,23 @@ ${[
 写作要求：
 1. 正文完整覆盖本章 beat 的每一个关键事件，顺序合理、因果清晰；不得新增 beat 之外的主线事件。
 2. 人物言行必须符合人物卡；POV 人物之外不进入其内心。
-3. 目标长度 ${'约 2000~3000 字'}；每个自然段开头用两个全角空格（　　）缩进，段与段之间用一个空行分隔；不要小标题、不要章节号、不要作者说明。
+3. 目标长度 ${targetWords ? `约 ${targetWords} 字` : '约 2000~3000 字'}；每个自然段开头用两个全角空格（　　）缩进，段与段之间用一个空行分隔；不要小标题、不要章节号、不要作者说明。
 4. 直接输出正文文字。`,
   };
 }
 
-/** 续写模式：已有部分正文时使用 */
-export function continuePrompt(ctx: ChapterContext, existing: string): { system: string; user: string } {
+/** 续写模式：已有部分正文时使用。budgetText 明确本次只写多少字，避免模型重写一整章导致耗时过长。 */
+export function continuePrompt(ctx: ChapterContext, existing: string, budgetText: string): { system: string; user: string } {
   const base = prosePrompt(ctx);
   const tail = existing.slice(-1200);
   return {
     system: base.system,
     user: `${base.user}
 
-【特别注意】本章已有部分正文如下，请从其结尾处无缝续写剩余部分。续写内容必须与已有部分浑然一体：延续场景、时态、人称与节奏，不得重复已有情节，也不要复述最后一段。
-已有正文结尾：
+【特别注意】本章已有部分正文约 ${existing.replace(/\s/g, '').length} 字，如下是其结尾：
 …${tail}
+
+本次任务是从其结尾处无缝续写约 ${budgetText}，把本章自然写完、收束到本章 beat 的终点。续写内容必须与已有部分浑然一体：延续场景、时态、人称与节奏，不得重复已有情节，也不要复述最后一段；不要为了凑长度而注水。
 
 直接输出续写的正文内容（不要重复已有文字）。`,
   };

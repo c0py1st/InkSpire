@@ -138,8 +138,54 @@ export const api = {
   wizardBible: (kernel: Kernel, volumes: Volume[], onDelta: (t: string) => void) =>
     sse<{ bible: { characters: CharacterCard[]; worldview: string } }>('/api/wizard/bible', { kernel, volumes }, onDelta),
 
-  generateChapter: (slug: string, chapterId: string, mode: 'full' | 'continue', onDelta: (t: string) => void, signal?: AbortSignal) =>
-    sse<{ chapterId: string }>(`/api/projects/${slug}/generate-chapter/${chapterId}`, { mode }, onDelta, undefined, signal),
+  /** 服务端后台生成：启动任务（服务端自己跑完并落盘，与页面是否存活无关） */
+  startBackgroundGeneration: (slug: string, chapterId: string, mode: 'full' | 'continue') =>
+    post<{ started: true }>(`/api/projects/${slug}/generate-bg/${chapterId}`, { mode }),
+  generationStatus: (slug: string, chapterId: string) =>
+    get<{ status: 'idle' | 'running' | 'done' | 'error' | 'cancelled'; chars: number; error?: string; wordCount?: number }>(
+      `/api/projects/${slug}/generation-status/${chapterId}`,
+    ),
+  cancelBackgroundGeneration: (slug: string, chapterId: string) =>
+    post<{ ok: true }>(`/api/projects/${slug}/generation-cancel/${chapterId}`, {}),
+  /** 订阅生成进度（SSE）。返回关闭函数。页面冻结时服务端生成不受影响。 */
+  openGenerationStream: (
+    slug: string,
+    chapterId: string,
+    onDelta: (t: string) => void,
+    onDone?: () => void,
+  ): (() => void) => {
+    const ctl = new AbortController();
+    void (async () => {
+      try {
+        const res = await fetch(`/api/projects/${slug}/generation-progress/${chapterId}`, { signal: ctl.signal });
+        if (!res.ok || !res.body) return;
+        const reader = res.body.getReader();
+        const decoder = new TextDecoder();
+        let buf = '';
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buf += decoder.decode(value, { stream: true });
+          let idx: number;
+          while ((idx = buf.indexOf('\n\n')) >= 0) {
+            const frame = buf.slice(0, idx);
+            buf = buf.slice(idx + 2);
+            for (const line of frame.split('\n')) {
+              if (!line.startsWith('data:')) continue;
+              const p = line.slice(5).trim();
+              if (!p) continue;
+              try {
+                const o = JSON.parse(p) as { type: string; text?: string };
+                if (o.type === 'delta' && o.text) onDelta(o.text);
+                else if (o.type === 'done') onDone?.();
+              } catch { /* 心跳行 */ }
+            }
+          }
+        }
+      } catch { /* 连接中断：轮询兜底 */ }
+    })();
+    return () => ctl.abort();
+  },
   chat: (slug: string, payload: { messages: Array<{ role: 'user' | 'assistant'; content: string }>; chapterId?: string; selection?: string }, onDelta: (t: string) => void) =>
     sse(`/api/projects/${slug}/chat`, payload, onDelta),
   propose: (slug: string, payload: ProposalRequest, onDelta: (t: string) => void) =>

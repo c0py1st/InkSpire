@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import type { Request, Response } from 'express';
 import {
-  AppConfig, ChapterBeat, CharacterCard, Kernel, Outline, ProposalRequest, ProviderProfile, Suggestion, Volume,
+  AppConfig, ChapterBeat, ChapterStatus, CharacterCard, Kernel, Outline, ProposalRequest, ProviderProfile, Suggestion, Volume,
 } from '../../../shared/src/types';
 import { loadConfig, isMock } from '../config';
 import { chatOnce, streamChat } from '../ai/provider';
@@ -18,9 +18,10 @@ import { chatPrompt } from '../ai/prompts/chat';
 import { summaryPrompt } from '../ai/prompts/summary';
 import { consistencyPrompt } from '../ai/prompts/consistency';
 import {
-  listChapters, loadBundle, loadOutline, loadSuggestions, readChapter,
-  saveOutline, saveSuggestions, saveSummaries, touchMeta,
+  getMeta, listChapters, loadBundle, loadOutline, loadSuggestions, readChapter,
+  saveChapterBody, saveOutline, saveSuggestions, saveSummaries, touchMeta,
 } from '../fs-store';
+import { countChars, ensureParagraphIndent } from '../../../shared/src/util';
 
 export const aiRouter = Router();
 
@@ -136,15 +137,43 @@ aiRouter.post('/wizard/bible', (req, res) => {
 /* ================= 正文生成 ================= */
 
 aiRouter.post('/projects/:slug/generate-chapter/:chapterId', (req, res) => {
-  const { slug, chapterId } = req.params;
-  const mode = (req.body?.mode as 'full' | 'continue') ?? 'full';
-  const cfg = loadConfig();
-  const outline = loadOutline(slug);
-  if (!outline) return res.status(400).json({ error: '本书还没有大纲' });
-  const bundle = loadBundle(slug);
-  const existing = mode === 'continue' ? readChapter(slug, chapterId) : null;
+  res.status(410).json({ error: '此接口已升级为服务端后台生成：/generate-bg' });
+});
 
-  streamTask(req, res, async (sse, signal) => {
+/* ================= 服务端后台生成 =================
+   生成任务在服务端执行并直接落盘：浏览器切走/刷新/关闭都不影响。
+   页面通过 status 轮询 + progress SSE 订阅进度。 */
+
+interface BgGenTask {
+  slug: string;
+  chapterId: string;
+  mode: 'full' | 'continue';
+  status: 'running' | 'done' | 'error' | 'cancelled';
+  chars: number;
+  error?: string;
+  wordCount?: number;
+  ctl: AbortController;
+}
+
+let bgGen: BgGenTask | null = null;
+const genSubscribers = new Set<(line: string) => void>();
+
+function emitGen(evt: unknown): void {
+  const line = `data: ${JSON.stringify(evt)}\n\n`;
+  for (const fn of genSubscribers) fn(line);
+}
+
+async function runBgGeneration(task: BgGenTask): Promise<void> {
+  const { slug, chapterId, mode } = task;
+  let acc = '';
+  try {
+    const cfg = loadConfig();
+    const outline = loadOutline(slug);
+    if (!outline) throw new Error('本书还没有大纲');
+    const bundle = loadBundle(slug);
+    const existing = mode === 'continue' ? readChapter(slug, chapterId) : null;
+    if (mode === 'continue' && !existing?.content.trim()) throw new Error('本章还没有正文，无法续写');
+
     const chapters = listChapters(slug);
     const prevId = (() => {
       try {
@@ -167,13 +196,119 @@ aiRouter.post('/projects/:slug/generate-chapter/:chapterId', (req, res) => {
       summaries: bundle.summaries,
       prevChapterContent: prevContent,
     });
-    const prompt = existing && existing.content.trim() ? continuePrompt(ctx, existing.content) : prosePrompt(ctx);
-    touchMeta(slug);
-    await streamToTask(sse, signal, creativeProfile(cfg), cfg, [
+
+    const targetWords = getMeta(slug).wordsPerChapter ?? undefined;
+    let prompt;
+    if (existing && existing.content.trim()) {
+      const cur = countChars(existing.content);
+      const remain = targetWords ? Math.max(0, targetWords - cur) : 0;
+      const budget = remain > 300 ? `约 ${Math.min(remain, 3000)} 字` : '300~600 字（收尾即可，不必硬撑到目标字数）';
+      prompt = continuePrompt(ctx, existing.content, budget);
+    } else {
+      prompt = prosePrompt(ctx, targetWords);
+    }
+
+    const loc = locateChapter(outline, chapterId);
+    const title = loc.chapter.title;
+    const prevStatus = loc.chapter.status;
+    const status: ChapterStatus = prevStatus === 'todo' ? 'draft' : prevStatus;
+
+    if (mode === 'continue' && existing) acc = existing.content;
+    for await (const delta of streamChat(cfg, creativeProfile(cfg), [
       { role: 'system', content: prompt.system },
       { role: 'user', content: prompt.user },
-    ], 'prose');
-    sse.send({ type: 'final', chapterId });
+    ], { signal: task.ctl.signal, kind: 'prose' })) {
+      acc += delta;
+      task.chars = countChars(acc);
+      emitGen({ type: 'delta', text: delta });
+    }
+
+    acc = ensureParagraphIndent(acc);
+    const wordCount = saveChapterBody(slug, { id: chapterId, title, status, content: acc });
+    task.status = 'done';
+    task.wordCount = wordCount;
+    emitGen({ type: 'done', wordCount });
+  } catch (err) {
+    const aborted = task.ctl.signal.aborted;
+    // 出错/停止时同样保留已生成部分，直接落盘
+    try {
+      if (acc.trim()) {
+        const outline = loadOutline(slug);
+        const loc = outline ? locateChapter(outline, chapterId) : null;
+        const title = loc?.chapter.title ?? chapterId;
+        const prevStatus = loc?.chapter.status ?? 'draft';
+        const status: ChapterStatus = prevStatus === 'todo' ? 'draft' : prevStatus;
+        const wordCount = saveChapterBody(slug, { id: chapterId, title, status, content: ensureParagraphIndent(acc) });
+        task.wordCount = wordCount;
+      }
+    } catch { /* 保存部分结果失败则忽略 */ }
+    task.status = aborted ? 'cancelled' : 'error';
+    task.error = aborted ? '已停止' : (err as Error).message;
+    emitGen({ type: 'error', message: task.error });
+  }
+}
+
+aiRouter.post('/projects/:slug/generate-bg/:chapterId', (req, res) => {
+  const { slug, chapterId } = req.params;
+  const mode = (req.body?.mode as 'full' | 'continue') ?? 'full';
+  if (bgGen && bgGen.status === 'running') {
+    return res.status(409).json({ error: '已有生成任务进行中，请等待完成或先停止' });
+  }
+  const outline = loadOutline(slug);
+  if (!outline) return res.status(400).json({ error: '本书还没有大纲' });
+  try {
+    locateChapter(outline, chapterId);
+  } catch (err) {
+    return res.status(404).json({ error: (err as Error).message });
+  }
+  const task: BgGenTask = {
+    slug, chapterId, mode: mode === 'continue' ? 'continue' : 'full',
+    status: 'running', chars: 0, ctl: new AbortController(),
+  };
+  bgGen = task;
+  void runBgGeneration(task);
+  res.json({ started: true });
+});
+
+aiRouter.get('/projects/:slug/generation-status/:chapterId', (req, res) => {
+  const { slug, chapterId } = req.params;
+  if (!bgGen || bgGen.slug !== slug || bgGen.chapterId !== chapterId) {
+    return res.json({ status: 'idle', chars: 0 });
+  }
+  res.json({ status: bgGen.status, chars: bgGen.chars, error: bgGen.error, wordCount: bgGen.wordCount });
+});
+
+aiRouter.post('/projects/:slug/generation-cancel/:chapterId', (req, res) => {
+  const { slug, chapterId } = req.params;
+  if (bgGen && bgGen.slug === slug && bgGen.chapterId === chapterId && bgGen.status === 'running') {
+    bgGen.ctl.abort();
+  }
+  res.json({ ok: true });
+});
+
+/** 进度订阅：SSE。页面冻结/关闭只影响预览，不影响服务端生成与落盘。 */
+aiRouter.get('/projects/:slug/generation-progress/:chapterId', (req, res) => {
+  const { slug, chapterId } = req.params;
+  res.writeHead(200, {
+    'Content-Type': 'text/event-stream; charset=utf-8',
+    'Cache-Control': 'no-cache',
+    Connection: 'keep-alive',
+    'X-Accel-Buffering': 'no',
+  });
+  res.flushHeaders();
+  if (bgGen && bgGen.slug === slug && bgGen.chapterId === chapterId) {
+    res.write(`data: ${JSON.stringify({ type: 'chars', chars: bgGen.chars })}\n\n`);
+  }
+  const sub = (line: string) => {
+    try { res.write(line); } catch { /* ignore */ }
+  };
+  genSubscribers.add(sub);
+  const ping = setInterval(() => {
+    try { res.write(': ping\n\n'); } catch { /* ignore */ }
+  }, 15000);
+  req.on('close', () => {
+    clearInterval(ping);
+    genSubscribers.delete(sub);
   });
 });
 

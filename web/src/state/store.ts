@@ -98,6 +98,8 @@ interface Store {
 
   startGeneration: (mode: 'full' | 'continue') => Promise<void>;
   cancelGeneration: () => void;
+  syncGenerationStatus: () => Promise<void>;
+  finishGenerationWatch: (status: string, error?: string, wordCount?: number) => Promise<void>;
 
   setSelection: (sel: Selection | null) => void;
   requestProposal: (kind: ProposalKind, instruction?: string) => void;
@@ -115,7 +117,10 @@ interface Store {
 
 let saveTimer: ReturnType<typeof setTimeout> | null = null;
 let toastSeq = 1;
-let genCtl: AbortController | null = null;
+let genInFlight = false; // 模块级防重入：双击/快速连点不会发出第二个生成请求
+let genSlug: string | null = null;       // 后台生成任务所属作品
+let pollTimer: ReturnType<typeof setInterval> | null = null;
+let closeGenStream: (() => void) | null = null;
 
 export const useStore = create<Store>((set, get) => ({
   theme: initialThemePref(),
@@ -144,6 +149,10 @@ export const useStore = create<Store>((set, get) => ({
     // 跟随系统模式下，系统切换深浅色时实时跟随
     window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
       if (get().theme === 'system') applyTheme('system');
+    });
+    // 页面从后台回到前台时立即同步一次生成状态（服务端可能已完成落盘）
+    document.addEventListener('visibilitychange', () => {
+      if (!document.hidden) void get().syncGenerationStatus();
     });
     await Promise.all([get().loadConfig(), get().loadProjects()]);
   },
@@ -246,80 +255,86 @@ export const useStore = create<Store>((set, get) => ({
 
   /**
    * 按 beat 生成一章正文。
-   * 生成在"后台"进行：期间可以随意切章/切视图；delta 只写入目标章（若它正被打开则实时可见），
-   * 结束（完成或用户停止）后无论打开的是哪章，都会把已生成内容保存回目标章。
+   * 生成由服务端后台执行并直接落盘：页面切走、刷新甚至关闭都不影响。
+   * 前端通过 progress SSE 订阅增量（页面在前台时可实时看到打字），轮询状态兜底；
+   * 页面回到前台时立即同步一次状态。期间可以随意切章/切视图。
    */
   async startGeneration(mode) {
     const st = get();
-    if (!st.slug || !st.chapter || st.generating) return;
-    const slug = st.slug;
+    if (!st.slug || !st.chapter || st.generating || genInFlight) return;
+    genInFlight = true;
     const targetId = st.chapter.id;
-    const targetTitle = st.chapter.title;
-    // 目标章之前的状态：未写→草稿，草稿/定稿→保持
-    const prevStatus: ChapterStatus = (() => {
-      for (const vol of st.bundle?.outline?.volumes ?? []) {
-        const hit = vol.chapters.find((c) => c.id === targetId);
-        if (hit) return hit.status;
-      }
-      return 'draft';
-    })();
-    const status: ChapterStatus = prevStatus === 'todo' ? 'draft' : prevStatus;
 
-    const ctl = new AbortController();
-    genCtl = ctl;
+    try {
+      await api.startBackgroundGeneration(st.slug, targetId, mode);
+    } catch (err) {
+      genInFlight = false;
+      get().toast(`启动生成失败：${(err as Error).message}`, 'error');
+      return;
+    }
+    genSlug = st.slug;
     set({ generating: true, generatingChapterId: targetId });
 
+    // 清空目标章显示（从头生成时），从服务端增量流实时回显
     let acc = mode === 'continue' ? st.chapter.content : '';
     if (mode === 'full' && get().chapter?.id === targetId) get().setStreamContent('');
 
-    let aborted = false;
-    try {
-      await api.generateChapter(slug, targetId, mode, (delta) => {
-        acc += delta;
-        const cur = get();
-        if (cur.chapter?.id === targetId) cur.setStreamContent(acc);
-      }, ctl.signal);
-    } catch (err) {
-      aborted = ctl.signal.aborted;
-      if (!aborted) {
-        set({ generating: false, generatingChapterId: null });
-        genCtl = null;
-        get().toast(`生成失败：${(err as Error).message}`, 'error');
-        return;
-      }
-    }
-    genCtl = null;
-
-    // 无论当前打开的是哪一章，都把结果保存回目标章（生成结果统一做段首缩进规整）
-    acc = ensureParagraphIndent(acc);
-    try {
-      const title = (() => {
-        for (const vol of get().bundle?.outline?.volumes ?? []) {
-          const hit = vol.chapters.find((c) => c.id === targetId);
-          if (hit) return hit.title;
-        }
-        return targetTitle;
-      })();
-      const { wordCount } = await api.saveChapter(slug, targetId, { content: acc, status, title });
+    closeGenStream = api.openGenerationStream(genSlug, targetId, (delta) => {
+      acc += delta;
       const cur = get();
-      if (cur.bundle) {
-        set({ bundle: { ...cur.bundle, wordCounts: { ...cur.bundle.wordCounts, [targetId]: wordCount } } });
-      }
-      if (cur.chapter?.id === targetId) {
-        set({ chapter: { ...cur.chapter, content: acc, status }, saveState: 'saved' });
-      }
-      get().toast(
-        aborted ? `已停止，《${title}》保留了 ${wordCount.toLocaleString()} 字` : `《${title}》生成完毕（${wordCount.toLocaleString()} 字）`,
-        'ok',
-      );
-    } catch (err) {
-      get().toast(`保存生成结果失败：${(err as Error).message}`, 'error');
-    }
+      if (cur.chapter?.id === targetId && cur.slug === genSlug) cur.setStreamContent(acc);
+    });
+
+    pollTimer = setInterval(() => void get().syncGenerationStatus(), 1500);
+    void get().syncGenerationStatus();
+  },
+
+  /** 轮询/回前台时同步服务端生成状态；任务结束则收尾（重新拉取已落盘的章节内容） */
+  async syncGenerationStatus() {
+    const st = get();
+    if (!st.generating || !genSlug || !st.generatingChapterId) return;
+    let s: Awaited<ReturnType<typeof api.generationStatus>>;
+    try {
+      s = await api.generationStatus(genSlug, st.generatingChapterId);
+    } catch { return; } // 网络抖动，下个轮询再试
+    if (s.status === 'running') return;
+    await get().finishGenerationWatch(s.status, s.error, s.wordCount);
+  },
+
+  async finishGenerationWatch(status, error, wordCount) {
+    if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+    if (closeGenStream) { closeGenStream(); closeGenStream = null; }
+    const targetId = get().generatingChapterId;
+    const slug = genSlug;
     set({ generating: false, generatingChapterId: null });
+    genInFlight = false;
+    if (!targetId || !slug) return;
+
+    // 结果已在服务端落盘：重新拉取章节内容与字数
+    try {
+      const cur = get();
+      const ch = await api.getChapter(slug, targetId);
+      if (cur.slug === slug && cur.chapter?.id === targetId) {
+        set({ chapter: { ...cur.chapter, content: ch.content, status: ch.status, title: ch.title }, saveState: 'saved' });
+      }
+      const fresh = get();
+      if (fresh.slug === slug && fresh.bundle) {
+        await fresh.reloadBundle();
+      }
+      const title = ch.title;
+      if (status === 'done') get().toast(`《${title}》生成完毕（${(wordCount ?? 0).toLocaleString()} 字）`, 'ok');
+      else if (status === 'cancelled') get().toast(`已停止，《${title}》保留了 ${(wordCount ?? 0).toLocaleString()} 字`, 'ok');
+      else get().toast(`生成失败：${error ?? '未知错误'}${(wordCount ?? 0) > 0 ? '（已保留部分内容）' : ''}`, 'error');
+    } catch (err) {
+      get().toast(`生成已结束，但读取结果失败：${(err as Error).message}`, 'error');
+    }
   },
 
   cancelGeneration() {
-    genCtl?.abort();
+    const st = get();
+    if (genSlug && st.generatingChapterId) {
+      void api.cancelBackgroundGeneration(genSlug, st.generatingChapterId);
+    }
   },
 
   setChapterTitle(title) {

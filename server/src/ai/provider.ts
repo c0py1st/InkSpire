@@ -135,54 +135,91 @@ export async function* streamChat(
   }
 
   const url = profile.baseURL.replace(/\/+$/, '') + '/chat/completions';
-  const res = await fetch(url, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${profile.apiKey}`,
-      ...(profile.model.startsWith('qwen') || url.includes('dashscope') ? {} : {}),
-    },
-    body: JSON.stringify({
-      model: profile.model,
-      messages,
-      stream: true,
-      temperature: opts.temperature ?? (opts.kind === 'json' ? 1.0 : profile.temperature ?? 1.1),
-      max_tokens: opts.maxTokens ?? profile.maxTokens ?? 8192,
-      // JSON 结构化任务关闭深度思考（官方 thinking 参数）：推理模型可能把整个输出预算
-      // 耗在思考上导致 content 为空，结构化任务也不需要长思考
-      ...(opts.kind === 'json' ? { thinking: { type: 'disabled' } } : {}),
-    }),
-    signal: opts.signal,
+  const body = JSON.stringify({
+    model: profile.model,
+    messages,
+    stream: true,
+    temperature: opts.temperature ?? (opts.kind === 'json' ? 1.0 : profile.temperature ?? 1.1),
+    max_tokens: opts.maxTokens ?? profile.maxTokens ?? 8192,
+    // JSON 结构化任务关闭深度思考（官方 thinking 参数）：推理模型可能把整个输出预算
+    // 耗在思考上导致 content 为空，结构化任务也不需要长思考
+    ...(opts.kind === 'json' ? { thinking: { type: 'disabled' } } : {}),
   });
 
-  if (!res.ok || !res.body) {
-    const text = await res.text().catch(() => '');
-    throw new ProviderError(`模型请求失败(${res.status})：${text.slice(0, 300)}`, res.status);
-  }
-
-  const reader = res.body.getReader();
-  const decoder = new TextDecoder();
-  let buf = '';
+  // 限流(429)/网络抖动自动退避重试。仅在尚未产出任何增量时重试才安全，
+  // 429 恰好发生在请求建立阶段，此处总是安全的。
+  const MAX_ATTEMPTS = 3;
+  let attempt = 0;
   while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    buf += decoder.decode(value, { stream: true });
-    let idx: number;
-    while ((idx = buf.indexOf('\n')) >= 0) {
-      const line = buf.slice(0, idx).trim();
-      buf = buf.slice(idx + 1);
-      if (!line.startsWith('data:')) continue;
-      const payload = line.slice(5).trim();
-      if (payload === '[DONE]') return;
-      try {
-        const obj = JSON.parse(payload);
-        const delta: string | undefined = obj.choices?.[0]?.delta?.content;
-        if (delta) yield delta;
-      } catch {
-        /* 忽略心跳等非 JSON 行 */
+    attempt++;
+    let res: Response;
+    try {
+      res = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${profile.apiKey}`,
+        },
+        body,
+        signal: opts.signal,
+      });
+    } catch (err) {
+      if (opts.signal?.aborted) throw err; // 用户主动停止，不重试
+      if (attempt >= MAX_ATTEMPTS) throw new ProviderError(`连接模型失败：${(err as Error).message}`);
+      await sleep(backoffMs(attempt));
+      continue;
+    }
+
+    if (res.status === 429 && attempt < MAX_ATTEMPTS) {
+      // 尊重服务端的 Retry-After，否则指数退避 + 抖动；释放连接后重试
+      const ra = Number(res.headers.get('retry-after'));
+      void res.body?.cancel().catch(() => {});
+      await sleep(Number.isFinite(ra) && ra > 0 ? ra * 1000 : backoffMs(attempt));
+      continue;
+    }
+
+    if (!res.ok || !res.body) {
+      const text = await res.text().catch(() => '');
+      if (res.status === 429) {
+        throw new ProviderError('模型限流(429)：已自动重试 3 次仍被拒绝，请等一两分钟再试，或避开高峰时段', 429);
+      }
+      throw new ProviderError(`模型请求失败(${res.status})：${text.slice(0, 300)}`, res.status);
+    }
+
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buf = '';
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buf += decoder.decode(value, { stream: true });
+      let idx: number;
+      while ((idx = buf.indexOf('\n')) >= 0) {
+        const line = buf.slice(0, idx).trim();
+        buf = buf.slice(idx + 1);
+        if (!line.startsWith('data:')) continue;
+        const payload = line.slice(5).trim();
+        if (payload === '[DONE]') return;
+        try {
+          const obj = JSON.parse(payload);
+          const delta: string | undefined = obj.choices?.[0]?.delta?.content;
+          if (delta) yield delta;
+        } catch {
+          /* 忽略心跳等非 JSON 行 */
+        }
       }
     }
+    return; // 流正常结束
   }
+}
+
+function backoffMs(attempt: number): number {
+  const base = 2000 * 2 ** (attempt - 1); // 2s / 4s
+  return base + Math.floor(Math.random() * 800);
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((r) => setTimeout(r, ms));
 }
 
 function splitChunks(text: string, size: number): string[] {
