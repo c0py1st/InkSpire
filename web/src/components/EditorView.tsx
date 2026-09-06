@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
 import type { ChapterStatus, ProposalKind } from '../../../shared/src/types';
 import { api } from '../api/client';
 import { useStore } from '../state/store';
+import { BuDialog } from './BuDialog';
 import { Btn } from './primitives';
 
 const QUICK_ACTIONS: Array<{ kind: ProposalKind; label: string }> = [
@@ -255,8 +256,7 @@ function HistoryModal(props: { slug: string; chapterId: string; chapterTitle: st
   }
 
   return (
-    <div className="modal-mask" onClick={onClose}>
-      <div className="modal" onClick={(e) => e.stopPropagation()}>
+    <BuDialog open onClose={onClose} closeOnOutsidePress ariaTitle={`历史版本 · ${chapterTitle}`}>
         <div className="m-head">
           历史版本 · 《{chapterTitle}》
           <div style={{ flex: 1 }} />
@@ -290,8 +290,7 @@ function HistoryModal(props: { slug: string; chapterId: string; chapterTitle: st
           <span style={{ fontSize: 11.5, color: 'var(--text-faint)' }}>恢复前会自动备份当前内容；每章最多保留 20 份备份。</span>
           <div className="spacer" />
         </div>
-      </div>
-    </div>
+    </BuDialog>
   );
 }
 

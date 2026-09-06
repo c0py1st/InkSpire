@@ -45,7 +45,7 @@ export function* mockStream(kind: 'json' | 'prose' | 'summary', promptHint: stri
     '刀出鞘的声音很短，短得像一句道别。',
     '雨落下来的时候，整座城都在往下沉。',
   ];
-  let paraCount = 8 + rnd(6);
+  const paraCount = 8 + rnd(6);
   for (let p = 0; p < paraCount; p++) {
     const n = 3 + rnd(3);
     const parts: string[] = [];

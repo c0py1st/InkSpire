@@ -3,6 +3,7 @@ import type { Outline } from '../../../shared/src/types';
 import { chapterId as mkChapterId } from '../../../shared/src/util';
 import { api } from '../api/client';
 import { useStore } from '../state/store';
+import { BuDialog } from './BuDialog';
 import { Btn, Field } from './primitives';
 
 export function OutlineView() {
@@ -200,7 +201,7 @@ export function OutlineView() {
                   <input
                     type="text" placeholder="出场人物（顿号分隔）"
                     value={(c.characters ?? []).join('、')}
-                    onChange={(e) => mutateVolumes((vs) => { vs[vi].chapters[ci] = { ...c, characters: [] }; return vs; }, false)}
+                    onChange={() => mutateVolumes((vs) => { vs[vi].chapters[ci] = { ...c, characters: [] }; return vs; }, false)}
                     onBlur={(e) => mutateVolumes((vs) => {
                       vs[vi].chapters[ci] = { ...c, characters: e.target.value.split(/[、,，\s]+/).filter(Boolean) };
                       return vs;
@@ -228,19 +229,17 @@ export function OutlineView() {
       </div>
 
       {confirmVol !== null && (
-        <div className="modal-mask" onClick={() => setConfirmVol(null)}>
-          <div className="modal narrow" onClick={(e) => e.stopPropagation()}>
-            <div className="m-head">AI 细化本卷</div>
-            <div className="m-body" style={{ fontSize: 13 }}>
-              将让 agent 依据本卷剧情弧重新生成《{outline.volumes[confirmVol].title}》全部 {outline.volumes[confirmVol].chapters.length || 10} 章的 beat，现有细纲会被覆盖（章节 id 与已有正文保持不变）。继续吗？
-            </div>
-            <div className="m-foot">
-              <div className="spacer" />
-              <Btn onClick={() => setConfirmVol(null)}>取消</Btn>
-              <Btn primary onClick={() => void refineVolume(confirmVol)}>重新生成</Btn>
-            </div>
+        <BuDialog open onClose={() => setConfirmVol(null)} closeOnOutsidePress ariaTitle="AI 细化本卷" size="narrow">
+          <div className="m-head">AI 细化本卷</div>
+          <div className="m-body" style={{ fontSize: 13 }}>
+            将让 agent 依据本卷剧情弧重新生成《{outline.volumes[confirmVol].title}》全部 {outline.volumes[confirmVol].chapters.length || 10} 章的 beat，现有细纲会被覆盖（章节 id 与已有正文保持不变）。继续吗？
           </div>
-        </div>
+          <div className="m-foot">
+            <div className="spacer" />
+            <Btn onClick={() => setConfirmVol(null)}>取消</Btn>
+            <Btn primary onClick={() => void refineVolume(confirmVol)}>重新生成</Btn>
+          </div>
+        </BuDialog>
       )}
     </div>
   );

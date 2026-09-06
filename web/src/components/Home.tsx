@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import type { ProjectMeta } from '../../../shared/src/types';
 import { api } from '../api/client';
 import { useStore } from '../state/store';
+import { BuDialog } from './BuDialog';
 import { Btn } from './primitives';
 
 export function Home() {
@@ -73,8 +74,7 @@ export function Home() {
 function ConfirmDelete(props: { slug: string; onCancel: () => void; onDone: () => void }) {
   const [busy, setBusy] = useState(false);
   return (
-    <div className="modal-mask" onClick={props.onCancel}>
-      <div className="modal narrow" onClick={(e) => e.stopPropagation()}>
+    <BuDialog open onClose={props.onCancel} closeOnOutsidePress ariaTitle="删除作品" size="narrow">
         <div className="m-head">删除作品</div>
         <div className="m-body" style={{ fontSize: 13 }}>
           将删除 <b>{props.slug}</b> 的全部磁盘文件（正文、大纲、设定），且无法恢复。确定吗？
@@ -84,7 +84,6 @@ function ConfirmDelete(props: { slug: string; onCancel: () => void; onDone: () =
           <Btn onClick={props.onCancel}>取消</Btn>
           <Btn danger disabled={busy} onClick={() => { setBusy(true); void props.onDone(); }}>确认删除</Btn>
         </div>
-      </div>
-    </div>
+    </BuDialog>
   );
 }

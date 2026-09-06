@@ -13,11 +13,18 @@
     "build": "npm run build -w web",
     "check": "tsc --noEmit -p server && tsc --noEmit -p web",
     "test": "vitest run --root server",
-    "start": "npm run start -w server"
+    "start": "npm run start -w server",
+    "lint": "eslint ."
   },
   "devDependencies": {
     "concurrently": "^9.1.2",
+    "eslint": "^10.10.0",
+    "eslint-plugin-react-hooks": "^7.1.1",
+    "eslint-plugin-react-refresh": "^0.5.6",
+    "globals": "^17.12.0",
     "typescript": "^5.7.3",
+    "typescript-eslint": "^8.69.0",
     "vitest": "^3.0.5"
-  }
+  },
+  "type": "module"
 }

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import type { CharacterCard, Kernel } from '../../../shared/src/types';
 import { api } from '../api/client';
 import { useStore } from '../state/store';
+import { BuDialog } from './BuDialog';
 import { Btn, Field } from './primitives';
 
 interface WizChapter { title: string; beat: string; pov: string; characters: string }
@@ -183,8 +184,15 @@ export function Wizard() {
   }
 
   return (
-    <div className="modal-mask">
-      <div className="modal">
+    <BuDialog
+      open
+      onClose={(reason) => {
+        // 与旧版一致：点遮罩不关闭；Esc 视同点「关闭」（生成中会弹确认）
+        if (reason === 'outside-press') return;
+        closeWizard();
+      }}
+      ariaTitle="开新书"
+    >
         <div className="m-head">
           开新书
           <div className="wiz-steps">
@@ -403,7 +411,6 @@ export function Wizard() {
             </div>
           )}
         </div>
-      </div>
-    </div>
+    </BuDialog>
   );
 }

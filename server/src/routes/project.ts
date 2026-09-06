@@ -4,7 +4,7 @@ import {
 } from '../../../shared/src/types';
 import { countChars } from '../../../shared/src/util';
 import {
-  getMeta, listChapterBackups, listChapters, loadBundle, readChapter, readChapterBackup, saveCharacters,
+  listChapterBackups, listChapters, loadBundle, readChapter, readChapterBackup, saveCharacters,
   saveChapterBody, saveOutline, saveSuggestions, saveWorldview,
 } from '../fs-store';
 

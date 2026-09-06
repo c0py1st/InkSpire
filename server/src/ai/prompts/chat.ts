@@ -1,5 +1,5 @@
 import type { Outline } from '../../../../shared/src/types';
-import { CREATOR_BASE, storyBibleSection } from './common';
+import { storyBibleSection } from './common';
 
 /** 批注抽屉里的自由问答（带当前章节上下文） */
 export function chatPrompt(args: {

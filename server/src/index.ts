@@ -1,7 +1,6 @@
 import express from 'express';
 import fs from 'node:fs';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
 import { DATA_DIR, ROOT, loadConfig } from './config';
 import { settingsRouter } from './routes/settings';
 import { projectsRouter } from './routes/projects';

@@ -5,24 +5,39 @@
    ============================================================ */
 
 :root {
-  /* 浅色主题「纸」 */
-  --bg: #f6f4ef;
-  --panel: #fdfcf9;
-  --panel-2: #f1eee7;
-  --text: #211e1a;
-  --text-dim: #6f6a61;
-  --text-faint: #a39c90;
-  --line: #e2ddd2;
-  --line-strong: #cfc8ba;
-  --accent: #d6491f;
-  --accent-soft: #f9e8e1;
-  --accent-ink: #fff;
+  /* 浅色主题「纸」· 12 阶底阶取自 Radix Colors 暖灰阶 sand（保留纸感暖调） */
+  --gray-1: #fdfdfc;
+  --gray-2: #f9f9f8;
+  --gray-3: #f1f0ef;
+  --gray-4: #e9e8e6;
+  --gray-5: #e2e1de;
+  --gray-6: #dad9d6;
+  --gray-7: #cfceca;
+  --gray-8: #bcbbb5;
+  --gray-9: #8d8d86;
+  --gray-10: #82827c;
+  --gray-11: #63635e;
+  --gray-12: #21201c;
+
+  /* 语义变量 → 灰阶映射 */
+  --bg: var(--gray-2);          /* 页面底 */
+  --panel: var(--gray-1);       /* 卡片/面板底（比页面亮一档） */
+  --panel-2: var(--gray-3);     /* hover/交互态底 */
+  --text: var(--gray-12);       /* 正文/标题 */
+  --text-dim: var(--gray-11);   /* 次级文字 */
+  --text-faint: var(--gray-9);  /* 最弱文字 */
+  --line: var(--gray-5);        /* 细分割线 */
+  --line-strong: var(--gray-7); /* 输入框边框等强边框 */
+  --accent: var(--gray-9);      /* 主色（按钮纯色，灰阶极简） */
+  --accent-soft: var(--gray-4); /* 强调底（hover/选中底） */
+  --accent-ink: #ffffff;        /* 主色上的文字 */
+  --accent-focus: #d6491f;      /* 焦点态保留朱红 */
+  --sel: color-mix(in srgb, var(--gray-12) 15%, transparent);
   --ok: #2f7d4f;
   --warn: #b07a1f;
   --warn-soft: #f7edd8;
   --danger: #b3372e;
   --danger-soft: #f7e3e0;
-  --sel: rgba(214, 73, 31, 0.14);
 
   --ui-font: system-ui, -apple-system, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif;
   --ms-font: 'LXGW WenKai Screen', 'LXGW WenKai', 'Kaiti SC', 'KaiTi', 'STKaiti', serif;
@@ -33,23 +48,39 @@
 }
 
 [data-theme='dark'] {
-  --bg: #171512;
-  --panel: #1e1b17;
-  --panel-2: #26221d;
-  --text: #dcd6cb;
-  --text-dim: #9a9285;
-  --text-faint: #6b6459;
-  --line: #302b24;
-  --line-strong: #453e34;
-  --accent: #ff6b3d;
-  --accent-soft: #3a241a;
-  --accent-ink: #1a0d07;
+  /* 深色主题「墨」· 12 阶底阶取自 Radix Colors 暖灰阶 sand 的深色版 */
+  --gray-1: #111110;
+  --gray-2: #191918;
+  --gray-3: #222221;
+  --gray-4: #2a2a28;
+  --gray-5: #31312e;
+  --gray-6: #3b3a37;
+  --gray-7: #494844;
+  --gray-8: #62605b;
+  --gray-9: #6f6d66;
+  --gray-10: #7c7b74;
+  --gray-11: #b5b3ad;
+  --gray-12: #eeeeec;
+
+  /* 语义变量 → 灰阶映射 */
+  --bg: var(--gray-1);          /* 页面底（最深） */
+  --panel: var(--gray-2);       /* 卡片/面板底（比页面亮一档） */
+  --panel-2: var(--gray-3);     /* hover/交互态底 */
+  --text: var(--gray-12);       /* 正文/标题 */
+  --text-dim: var(--gray-11);   /* 次级文字 */
+  --text-faint: var(--gray-9);  /* 最弱文字 */
+  --line: var(--gray-5);        /* 细分割线 */
+  --line-strong: var(--gray-7); /* 输入框边框等强边框 */
+  --accent: var(--gray-9);      /* 主色（按钮纯色，灰阶极简） */
+  --accent-soft: var(--gray-4); /* 强调底（hover/选中底） */
+  --accent-ink: #ffffff;        /* 主色上的文字 */
+  --accent-focus: #ff6b3d;      /* 焦点态保留朱红 */
+  --sel: color-mix(in srgb, var(--gray-12) 20%, transparent);
   --ok: #6fbf8f;
   --warn: #d9a84e;
   --warn-soft: #352a17;
   --danger: #e06a5e;
   --danger-soft: #3a1f1b;
-  --sel: rgba(255, 107, 61, 0.22);
 }
 
 * { box-sizing: border-box; }
@@ -227,7 +258,7 @@ input[type='text'], input[type='password'], input[type='number'], textarea, sele
   transition: border-color var(--speed);
 }
 
-input:focus, textarea:focus, select:focus { border-color: var(--accent); }
+input:focus, textarea:focus, select:focus { border-color: var(--accent-focus); }
 
 textarea { resize: vertical; line-height: 1.6; }
 
@@ -775,14 +806,44 @@ textarea { resize: vertical; line-height: 1.6; }
 
 /* ---------------- 弹层 ---------------- */
 
-.modal-mask {
+/* Base UI Dialog 封装层（bu- 前缀）：backdrop 负责遮罩，popup 负责居中定位；
+   视觉样式仍走下方 .modal / .modal.narrow / .modal.settings-modal */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.bu-backdrop {
   position: fixed;
   inset: 0;
-  background: color-mix(in srgb, var(--bg) 55%, #000 45%);
-  display: flex;
-  align-items: center;
-  justify-content: center;
   z-index: 100;
+  background: color-mix(in srgb, var(--bg) 55%, #000 45%);
+  transition: opacity var(--speed) ease;
+}
+.bu-backdrop[data-starting-style],
+.bu-backdrop[data-closed] {
+  opacity: 0;
+}
+
+.bu-popup {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 101;
+  transition: opacity var(--speed) ease, transform var(--speed) ease;
+}
+.bu-popup[data-starting-style],
+.bu-popup[data-closed] {
+  opacity: 0;
+  transform: translate(-50%, -48.5%);
 }
 
 .modal {

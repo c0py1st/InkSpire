@@ -1,4 +1,3 @@
-import { useMemo } from 'react';
 import { useStore } from '../state/store';
 import { ThemeToggle } from './ThemeToggle';
 
@@ -8,10 +7,10 @@ export function TopBar() {
     setSettingsOpen, setWizardOpen, backHome, centerView, setView,
   } = useStore();
 
-  const totalWords = useMemo(() => {
-    if (!bundle?.wordCounts) return 0;
-    return Object.values(bundle.wordCounts).reduce((a, b) => a + b, 0);
-  }, [bundle?.wordCounts]);
+  // 直接求和即可：bundle 变化频率本就不高，无需手动 memo（React Compiler 也不认可此写法）
+  const totalWords = bundle?.wordCounts
+    ? Object.values(bundle.wordCounts).reduce((a, b) => a + b, 0)
+    : 0;
 
   const noKey = !bundle && !slug && !useStore.getState().config?.mockMode
     && !(useStore.getState().config?.providers ?? []).some((p) => p.apiKey.trim());

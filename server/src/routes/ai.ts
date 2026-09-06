@@ -1,9 +1,9 @@
 import { Router } from 'express';
 import type { Request, Response } from 'express';
 import {
-  AppConfig, ChapterBeat, ChapterStatus, CharacterCard, Kernel, Outline, ProposalRequest, ProviderProfile, Suggestion, Volume,
+  AppConfig, ChapterBeat, ChapterStatus, CharacterCard, Kernel, ProposalRequest, ProviderProfile, Suggestion, Volume,
 } from '../../../shared/src/types';
-import { loadConfig, isMock } from '../config';
+import { loadConfig } from '../config';
 import { chatOnce, streamChat } from '../ai/provider';
 import { extractJson } from '../ai/json';
 import { Sse, abortOnClose } from '../ai/sse';
@@ -19,7 +19,7 @@ import { summaryPrompt } from '../ai/prompts/summary';
 import { consistencyPrompt } from '../ai/prompts/consistency';
 import {
   getMeta, listChapters, loadBundle, loadOutline, loadSuggestions, readChapter,
-  saveChapterBody, saveOutline, saveSuggestions, saveSummaries, touchMeta,
+  saveChapterBody, saveOutline, saveSuggestions, saveSummaries,
 } from '../fs-store';
 import { countChars, ensureParagraphIndent } from '../../../shared/src/util';
 
@@ -540,7 +540,7 @@ aiRouter.post('/projects/:slug/refine-volume/:volIndex', async (req, res) => {
       { role: 'user', content: prompt.user },
     ], { kind: 'json', maxTokens: 8192 });
     const parsed = extractJson<{ chapters: Array<{ title: string; beat: string; pov?: string; characters?: string[] }> }>(raw);
-    const keepIds = vol.chapters.map((c, i) => c.id).slice(0, parsed.chapters.length);
+    const keepIds = vol.chapters.map((ch) => ch.id).slice(0, parsed.chapters.length);
     const { chapterId: mkId } = await import('../../../shared/src/util');
     vol.chapters = parsed.chapters.map((c, i) => {
       const id = keepIds[i] ?? mkId(vi + 1, i + 1);

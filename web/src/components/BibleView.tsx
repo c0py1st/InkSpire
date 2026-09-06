@@ -1,17 +1,19 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import type { CharacterCard } from '../../../shared/src/types';
 import { useStore } from '../state/store';
 import { Btn } from './primitives';
 
 export function BibleView() {
   const { bundle, persistCharacters, persistWorldview, toast } = useStore();
+  // slug 变化（切换作品）时重置本地编辑态：渲染期间直接比较上一值，避免 effect 级联
+  const [lastSlug, setLastSlug] = useState(bundle?.meta.slug);
   const [chars, setChars] = useState<CharacterCard[]>(bundle?.characters ?? []);
   const [worldview, setWorldview] = useState(bundle?.worldview ?? '');
-
-  useEffect(() => {
-    setChars(bundle?.characters ?? []);
-    setWorldview(bundle?.worldview ?? '');
-  }, [bundle?.meta.slug]);
+  if (bundle && bundle.meta.slug !== lastSlug) {
+    setLastSlug(bundle.meta.slug);
+    setChars(bundle.characters);
+    setWorldview(bundle.worldview);
+  }
 
   if (!bundle) return null;
 

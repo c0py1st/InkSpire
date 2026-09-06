@@ -1,8 +1,9 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import type { AppConfig, ProviderProfile } from '../../../shared/src/types';
 import { PROVIDER_PRESETS } from '../../../shared/src/types';
 import { api } from '../api/client';
 import { useStore } from '../state/store';
+import { BuDialog } from './BuDialog';
 import { Btn } from './primitives';
 
 const normUrl = (u: string) => u.replace(/\/+$/, '').trim().toLowerCase();
@@ -25,12 +26,10 @@ export function SettingsModal() {
 
   const selected = draft?.providers.find((p) => p.id === selectedId) ?? draft?.providers[0] ?? null;
 
-  // 选中的配置被删除后，回落到第一项
-  useEffect(() => {
-    if (draft && !draft.providers.some((p) => p.id === selectedId)) {
-      setSelectedId(draft.providers[0]?.id ?? null);
-    }
-  }, [draft]);
+  // 选中的配置被删除后，渲染期间直接回落到第一项（避免 effect 级联）
+  if (draft && selectedId && !draft.providers.some((p) => p.id === selectedId)) {
+    setSelectedId(draft.providers[0]?.id ?? null);
+  }
 
   function patchSelected(patch: Partial<ProviderProfile>) {
     if (!draft || !selected) return;
@@ -95,13 +94,21 @@ export function SettingsModal() {
   if (!draft) return null;
 
   return (
-    <div className="modal-mask">
-      <div className="modal settings-modal">
-        <div className="m-head">
-          设置 · 模型接入
-          <div style={{ flex: 1 }} />
-          <Btn ghost small onClick={() => setSettingsOpen(false)}>关闭</Btn>
-        </div>
+    <BuDialog
+      open
+      onClose={(reason) => {
+        // 与旧版一致：点遮罩不关闭（ Esc 视同取消）
+        if (reason === 'outside-press') return;
+        setSettingsOpen(false);
+      }}
+      ariaTitle="设置 · 模型接入"
+      size="wide"
+    >
+      <div className="m-head">
+        设置 · 模型接入
+        <div style={{ flex: 1 }} />
+        <Btn ghost small onClick={() => setSettingsOpen(false)}>关闭</Btn>
+      </div>
 
         <div className="settings-body">
           <aside className="settings-list">
@@ -162,8 +169,7 @@ export function SettingsModal() {
           <Btn onClick={() => setSettingsOpen(false)}>取消</Btn>
           <Btn primary onClick={() => void save()}>保存设置</Btn>
         </div>
-      </div>
-    </div>
+    </BuDialog>
   );
 }
 
