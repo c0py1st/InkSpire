@@ -413,7 +413,7 @@ export const useStore = create<Store>((set, get) => ({
     const next = ch.content.slice(0, start)
       + (atParagraphStart(ch.content, start) ? ensureParagraphIndent(text) : text)
       + ch.content.slice(end);
-    set({ chapter: { ...ch, content: next } });
+    set({ chapter: { ...ch, content: next }, selection: null }); // 选区已被替换，清除工具条
     await get().saveChapter();
   },
 

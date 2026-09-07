@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
+import { useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react';
 import type { ChapterStatus, ProposalKind } from '../../../shared/src/types';
 import { api } from '../api/client';
 import { useStore } from '../state/store';
@@ -36,6 +36,33 @@ export function EditorView() {
     // 切章时清掉选区
     setSelection(null);
   }, [chapter?.id]);
+
+  // 工具条被显式关闭（Esc/×）时记住选区范围：Escape 不折叠选区，随后的 keyup
+  // 会用同一段选区再次触发 captureSelection，必须识别并保持关闭
+  const dismissedRef = useRef<{ start: number; end: number } | null>(null);
+
+  // 工具条打开期间：点击工具条以外的任何位置、或按 Esc，都收起工具条
+  useEffect(() => {
+    if (!selection) return;
+    const onDocMouseDown = (ev: MouseEvent) => {
+      const t = ev.target as HTMLElement | null;
+      if (t && t.closest('.sel-toolbar')) return;
+      dismissedRef.current = { start: selection.start, end: selection.end };
+      setSelection(null);
+    };
+    const onKey = (ev: KeyboardEvent) => {
+      if (ev.key === 'Escape') {
+        dismissedRef.current = { start: selection.start, end: selection.end };
+        setSelection(null);
+      }
+    };
+    document.addEventListener('mousedown', onDocMouseDown);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', onDocMouseDown);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [selection, setSelection]);
 
   if (!chapter) {
     return (
@@ -78,18 +105,67 @@ export function EditorView() {
     }
   }
 
+  /**
+   * 用"镜像层"测量选区起点在视口中的真实坐标：
+   * 建一个与 textarea 同字体/同宽度的隐藏 div，复制光标前文本并追加分隔符 span，
+   * span 的位置即选区首行位置。不引入新依赖，仅标准 DOM 测量。
+   */
+  function selectionViewportPos(ta: HTMLTextAreaElement, start: number): { x: number; y: number } {
+    const taRect = ta.getBoundingClientRect();
+    const cs = window.getComputedStyle(ta);
+    const mirror = document.createElement('div');
+    for (const k of [
+      'fontFamily', 'fontSize', 'fontWeight', 'fontStyle', 'letterSpacing', 'lineHeight',
+      'paddingLeft', 'paddingRight', 'paddingTop', 'paddingBottom',
+      'borderLeftWidth', 'borderRightWidth', 'borderTopWidth', 'borderBottomWidth', 'boxSizing',
+    ] as const) {
+      (mirror.style as unknown as Record<string, string>)[k] = cs[k];
+    }
+    mirror.style.position = 'fixed';
+    mirror.style.left = `${taRect.left}px`;
+    mirror.style.top = `${taRect.top}px`;
+    mirror.style.width = `${ta.clientWidth}px`;
+    mirror.style.height = 'auto';
+    mirror.style.visibility = 'hidden';
+    mirror.style.whiteSpace = 'pre-wrap';
+    mirror.style.overflowWrap = 'break-word';
+    mirror.style.overflow = 'hidden';
+    mirror.textContent = ta.value.slice(0, start);
+    const marker = document.createElement('span');
+    marker.textContent = '\u200b';
+    mirror.appendChild(marker);
+    document.body.appendChild(mirror);
+    const mRect = marker.getBoundingClientRect();
+    mirror.remove();
+    return { x: mRect.left, y: mRect.bottom - ta.scrollTop };
+  }
+
   function captureSelection() {
     const ta = taRef.current;
     if (!ta) return;
     const { selectionStart, selectionEnd } = ta;
     if (selectionStart < selectionEnd) {
-      const rect = ta.getBoundingClientRect();
+      // 被显式关闭的同一选区不重新弹出
+      const dismissed = dismissedRef.current;
+      if (dismissed && dismissed.start === selectionStart && dismissed.end === selectionEnd) {
+        setSelection(null);
+        return;
+      }
+      dismissedRef.current = null;
+      const container = ta.closest('.center-scroll');
+      const cRect = container?.getBoundingClientRect();
+      const pos = selectionViewportPos(ta, selectionStart);
+      // 工具条坐标：相对滚动容器内容区（absolute 定位随内容滚动，选区滚动时仍贴着文字）
+      const x = pos.x - (cRect?.left ?? 0);
+      const markerY = pos.y - (cRect?.top ?? 0) + (container?.scrollTop ?? 0);
+      // 默认悬在选区上方；贴近顶部时改到选区下方
+      const y = markerY - 42 < 4 ? markerY + 8 : markerY - 42;
       setSelection({
         start: selectionStart,
         end: selectionEnd,
         text: chapter!.content.slice(selectionStart, selectionEnd),
-        x: rect.left + rect.width / 2,
-        y: rect.top + 70,
+        x,
+        y,
       });
     } else {
       setSelection(null);
@@ -97,7 +173,7 @@ export function EditorView() {
   }
 
   /** 回车换段：非空行后回车自动带 　　 缩进；空行回车仅换行（用于段落间空行） */
-  function handleEnter(e: KeyboardEvent<HTMLTextAreaElement>) {
+  function handleEnter(e: ReactKeyboardEvent<HTMLTextAreaElement>) {
     if (e.key !== 'Enter' || e.shiftKey || e.nativeEvent.isComposing) return;
     e.preventDefault();
     const ta = e.currentTarget;
@@ -169,6 +245,7 @@ export function EditorView() {
             placeholder={beat ? `本章大纲：\n${beat}\n\n直接开写，或点上方「生成本章」让 agent 按大纲执笔。` : '（本章还没有 beat，先去大纲页填写，或直接开写）'}
             onChange={(e) => setContent(e.target.value)}
             onKeyDown={handleEnter}
+            onMouseDown={() => { dismissedRef.current = null; }} // 鼠标重新按下=明确的重新选择意图
             onSelect={captureSelection}
             onKeyUp={captureSelection}
             onMouseUp={captureSelection}
@@ -178,7 +255,14 @@ export function EditorView() {
         </div>
 
         {sel && !generating && (
-          <div className="sel-toolbar" style={{ left: Math.max(120, sel.x - 140), top: 8 }}>
+          <div
+            className="sel-toolbar"
+            style={{
+              // CSS 侧钳制水平位置（100% = 滚动容器宽度），不读 ref
+              left: `max(8px, min(${Math.round(sel.x) - 24}px, calc(100% - 438px)))`,
+              top: Math.max(4, Math.round(sel.y)),
+            }}
+          >
             {QUICK_ACTIONS.map((a) => (
               <button key={a.kind} onClick={() => requestProposal(a.kind)}>{a.label}</button>
             ))}
@@ -186,7 +270,6 @@ export function EditorView() {
               const instr = window.prompt('对选中片段的要求：');
               if (instr) requestProposal('custom', instr);
             }}>自定义…</button>
-            <button onClick={() => setSelection(null)}>×</button>
           </div>
         )}
       </div>
