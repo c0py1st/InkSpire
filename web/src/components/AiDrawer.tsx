@@ -111,6 +111,7 @@ export function AiDrawer() {
     setMessages([...history, { role: 'assistant', content: '' }]);
     setChatBusy(true);
     setTab('chat');
+    let truncated = false;
     try {
       await api.chat(slug, {
         messages: history,
@@ -123,7 +124,16 @@ export function AiDrawer() {
           return next;
         });
         scrollBottom();
-      });
+      }, (obj) => { if (obj.truncated === true) truncated = true; });
+      if (truncated) {
+        setMessages((ms) => {
+          const next = [...ms];
+          const i = next.length - 1;
+          next[i] = { ...next[i], content: next[i].content + '\n\n（回答达到长度上限被截断了——把问题拆细一点再问，或回复"继续"）' };
+          return next;
+        });
+        scrollBottom();
+      }
     } catch (err) {
       toast((err as Error).message, 'error');
       setMessages((ms) => ms.slice(0, -1));

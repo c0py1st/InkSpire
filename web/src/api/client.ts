@@ -186,8 +186,12 @@ export const api = {
     })();
     return () => ctl.abort();
   },
-  chat: (slug: string, payload: { messages: Array<{ role: 'user' | 'assistant'; content: string }>; chapterId?: string; selection?: string }, onDelta: (t: string) => void) =>
-    sse(`/api/projects/${slug}/chat`, payload, onDelta),
+  chat: (
+    slug: string,
+    payload: { messages: Array<{ role: 'user' | 'assistant'; content: string }>; chapterId?: string; selection?: string },
+    onDelta: (t: string) => void,
+    onFinal?: (obj: Record<string, unknown>) => void,
+  ) => sse(`/api/projects/${slug}/chat`, payload, onDelta, onFinal),
   propose: (slug: string, payload: ProposalRequest, onDelta: (t: string) => void) =>
     sse(`/api/projects/${slug}/propose`, payload, onDelta),
 

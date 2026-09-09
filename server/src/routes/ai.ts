@@ -73,9 +73,10 @@ async function streamToTask(
   kind: 'json' | 'prose' | 'summary',
   maxTokens?: number,
   temperature?: number,
+  onMeta?: (meta: { finishReason?: string }) => void,
 ): Promise<string> {
   let full = '';
-  for await (const delta of streamChat(cfg, profile, messages, { signal, kind, maxTokens, temperature })) {
+  for await (const delta of streamChat(cfg, profile, messages, { signal, kind, maxTokens, temperature, onMeta })) {
     full += delta;
     sse.delta(delta);
   }
@@ -465,10 +466,12 @@ aiRouter.post('/projects/:slug/chat', (req, res) => {
   });
 
   streamTask(req, res, async (sse, signal) => {
+    let truncated = false;
     await streamToTask(sse, signal, profile, cfg, [
       { role: 'system', content: prompt.system },
       { role: 'user', content: prompt.user },
-    ], 'prose');
+    ], 'prose', undefined, undefined, (m) => { truncated = m.finishReason === 'length'; });
+    if (truncated) sse.send({ type: 'final', truncated: true });
   });
 });
 
