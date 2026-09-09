@@ -407,8 +407,8 @@ export const useStore = create<Store>((set, get) => ({
           }
         }
         if (changed) {
-          set({ bundle: { ...b, outline: { ...b.outline } } });
-          void api.saveOutline(slug, b.outline);
+          // 走 persistOutline：内部 catch + toast；裸 api 调用失败会产生无人处理的 rejection
+          void get().persistOutline(b.outline);
         }
       }
     } catch (err) {
