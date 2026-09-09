@@ -59,7 +59,7 @@ data/
 server/   Express 后端：文件存储层、模型接入层、agent 编排、SSE 流式路由
   src/ai/prompts/   ★ 所有提示词模板都在这里，想调教文风直接改文件
   src/ai/memory.ts  上下文组装（前情摘要预算、人物卡挑选）
-web/      React + Vite 前端：手写 CSS 设计系统，无 UI 框架依赖
+web/      React + Vite 前端：手写 CSS 设计系统；仅弹窗使用 Base UI 无头组件（不带任何样式）
 shared/   前后端共享类型
 ```
 
@@ -77,3 +77,12 @@ shared/   前后端共享类型
 - 挂机连写：按大纲顺序自动生成 N 章后统一审阅
 - 章内场景级 beat 细分
 - 时间线/伏笔登记表
+
+## 致谢与第三方
+
+本项目的界面在两个开源项目的基础上做了少量集成：
+
+- [Radix Colors](https://www.radix-ui.com/colors)（MIT）——明暗两套主题的灰阶色板取自其 **sand**（暖灰）12 级色阶，以 CSS 自定义属性形式内联在 `web/src/styles/global.css` 的量表区，未引入运行时依赖。
+- [Base UI](https://base-ui.com)（MIT）——所有弹窗（设置、开书向导、历史版本、确认框）的行为层使用其无头 `Dialog` 组件（npm 依赖 `@base-ui-components/react`，提供 Escape/焦点圈定/ARIA/滚动锁定）；视觉样式全部仍由本项目手写 CSS 完成。
+
+另有随包分发的正文字体 [霞鹜文楷屏幕版 lxgw-wenkai-screen-webfont](https://github.com/lxgw/LxgwWenKai-Screen)（SIL OFL 1.1，npm 依赖），保证稿纸区字体离线统一。
