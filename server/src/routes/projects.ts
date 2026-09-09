@@ -1,9 +1,6 @@
 import { Router } from 'express';
-import fs from 'node:fs';
-import path from 'node:path';
 import { ChapterFile, CharacterCard, Outline } from '../../../shared/src/types';
 import { chapterId as mkChapterId, countChars, volumeId } from '../../../shared/src/util';
-import { DATA_DIR } from '../config';
 import {
   createProject, deleteProject, getMeta, listChapters, listProjects, loadOutline, saveProjectBundle,
 } from '../fs-store';
@@ -87,12 +84,9 @@ projectsRouter.get('/:slug/export', (req, res) => {
     let text = parts.join('\n');
     if (format === 'txt') text = text.replace(/^# /gm, '').replace(/^> /gm, '').replace(/\*\*/g, '');
 
-    const outDir = path.join(DATA_DIR, slug, 'exports');
-    fs.mkdirSync(outDir, { recursive: true });
-    const file = path.join(outDir, `${meta.title}.${format}`);
-    fs.writeFileSync(file, text, 'utf8');
+    // 直接下发，不再落盘副本；下载文件名用 slug（title 可能含路径非法字符）
     res.setHeader('Content-Type', 'text/plain; charset=utf-8');
-    res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${encodeURIComponent(`${meta.title}.${format}`)}`);
+    res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${encodeURIComponent(`${meta.slug}.${format}`)}`);
     res.send(text);
   } catch (err) {
     res.status(400).json({ error: (err as Error).message });
