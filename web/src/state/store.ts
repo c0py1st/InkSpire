@@ -267,6 +267,11 @@ export const useStore = create<Store>((set, get) => ({
     genInFlight = true;
     const targetId = st.chapter.id;
 
+    // 冲刷防抖窗口内的未保存输入：服务端从磁盘读正文，不先落盘会丢最后几笔
+    if (get().saveState === 'dirty') {
+      await get().saveChapter();
+    }
+
     try {
       await api.startBackgroundGeneration(st.slug, targetId, mode);
     } catch (err) {
