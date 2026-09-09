@@ -122,6 +122,7 @@ let genInFlight = false; // 模块级防重入：双击/快速连点不会发出
 let genSlug: string | null = null;       // 后台生成任务所属作品
 let pollTimer: ReturnType<typeof setInterval> | null = null;
 let closeGenStream: (() => void) | null = null;
+let envListenersBound = false;           // StrictMode 下 init() 跑两遍，守卫避免重复注册全局监听
 
 export const useStore = create<Store>((set, get) => ({
   theme: initialThemePref(),
@@ -148,14 +149,17 @@ export const useStore = create<Store>((set, get) => ({
 
   async init() {
     applyTheme(get().theme);
-    // 跟随系统模式下，系统切换深浅色时实时跟随
-    window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
-      if (get().theme === 'system') applyTheme('system');
-    });
-    // 页面从后台回到前台时立即同步一次生成状态（服务端可能已完成落盘）
-    document.addEventListener('visibilitychange', () => {
-      if (!document.hidden) void get().syncGenerationStatus();
-    });
+    if (!envListenersBound) {
+      envListenersBound = true;
+      // 跟随系统模式下，系统切换深浅色时实时跟随
+      window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
+        if (get().theme === 'system') applyTheme('system');
+      });
+      // 页面从后台回到前台时立即同步一次生成状态（服务端可能已完成落盘）
+      document.addEventListener('visibilitychange', () => {
+        if (!document.hidden) void get().syncGenerationStatus();
+      });
+    }
     await Promise.all([get().loadConfig(), get().loadProjects()]);
   },
 
