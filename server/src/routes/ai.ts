@@ -250,7 +250,9 @@ async function runBgGeneration(task: BgGenTask): Promise<void> {
     }
 
     acc = ensureParagraphIndent(acc);
-    const wordCount = saveChapterBody(slug, { id: chapterId, title, status, content: acc });
+    // full 模式会覆盖盘上旧稿：无论长度先强制备份（旧稿很短时 <70% 规则不成立）
+    const hadOld = mode === 'full' && !!readChapter(slug, chapterId).content.trim();
+    const wordCount = saveChapterBody(slug, { id: chapterId, title, status, content: acc }, hadOld);
     task.status = 'done';
     task.wordCount = wordCount;
     task.truncated = finishReason === 'length';
@@ -265,7 +267,8 @@ async function runBgGeneration(task: BgGenTask): Promise<void> {
         const title = loc?.chapter.title ?? chapterId;
         const prevStatus = loc?.chapter.status ?? 'draft';
         const status: ChapterStatus = prevStatus === 'todo' ? 'draft' : prevStatus;
-        const wordCount = saveChapterBody(slug, { id: chapterId, title, status, content: ensureParagraphIndent(acc) });
+        const hadOld = mode === 'full' && !!readChapter(slug, chapterId).content.trim();
+        const wordCount = saveChapterBody(slug, { id: chapterId, title, status, content: ensureParagraphIndent(acc) }, hadOld);
         task.wordCount = wordCount;
       }
     } catch { /* 保存部分结果失败则忽略 */ }
