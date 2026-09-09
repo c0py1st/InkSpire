@@ -1,6 +1,6 @@
 /** 与后端的全部交互。SSE 统一走 sse()。 */
 import type {
-  AppConfig, Bundle, ChapterFile, CharacterCard, Kernel, Outline, ProjectMeta, ProposalRequest, Volume,
+  AppConfig, Bundle, ChapterFile, ChapterStatus, CharacterCard, ConsistencyIssue, Kernel, Outline, ProjectMeta, ProposalRequest, Suggestion, Volume,
 } from '../../../shared/src/types';
 
 async function json<T>(res: Response): Promise<T> {
@@ -102,7 +102,7 @@ export const api = {
 
   getBundle: (slug: string) => get<Bundle & { wordCounts: Record<string, number> }>(`/api/projects/${slug}/bundle`),
   getChapter: (slug: string, id: string) => get<ChapterFile>(`/api/projects/${slug}/chapter/${id}`),
-  saveChapter: (slug: string, id: string, payload: { content: string; status?: string; title?: string; backup?: boolean }) =>
+  saveChapter: (slug: string, id: string, payload: { content: string; status?: ChapterStatus; title?: string; backup?: boolean }) =>
     put<{ wordCount: number }>(`/api/projects/${slug}/chapter/${id}`, payload),
   listBackups: (slug: string, id: string) =>
     get<Array<{ stamp: string; epoch: number; chars: number; title: string }>>(`/api/projects/${slug}/chapter/${id}/backups`),
@@ -116,11 +116,11 @@ export const api = {
   dismissSuggestion: (slug: string, id: string) => del<{ ok: true }>(`/api/projects/${slug}/suggestions/${id}`),
 
   finalizeChapter: (slug: string, chapterId: string, content: string) =>
-    post<{ summary: string; newSuggestions: Array<{ id: string; kind: string; name: string; content: string }> }>(
+    post<{ summary: string; newSuggestions: Suggestion[] }>(
       `/api/projects/${slug}/finalize-chapter/${chapterId}`, { content },
     ),
   consistency: (slug: string, chapterId: string) =>
-    post<{ issues: Array<{ severity: string; quote: string; description: string }> }>(
+    post<{ issues: ConsistencyIssue[] }>(
       `/api/projects/${slug}/check-consistency/${chapterId}`, {},
     ),
   refineVolume: (slug: string, volIndex: number, chapterCount: number) =>

@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import type { Request, Response } from 'express';
 import {
-  AppConfig, ChapterBeat, ChapterStatus, CharacterCard, Kernel, ProposalRequest, ProviderProfile, Suggestion, Volume,
+  AppConfig, ChapterBeat, ChapterStatus, CharacterCard, ConsistencyIssue, Kernel, ProposalRequest, ProviderProfile, Suggestion, Volume,
 } from '../../../shared/src/types';
 import { loadConfig } from '../config';
 import { chatOnce, streamChat } from '../ai/provider';
@@ -516,7 +516,7 @@ aiRouter.post('/projects/:slug/check-consistency/:chapterId', async (req, res) =
       { role: 'system', content: prompt.system },
       { role: 'user', content: prompt.user },
     ], { kind: 'json', temperature: 0.2, maxTokens: 4000 });
-    res.json(extractJson<{ issues: Array<{ severity: string; quote: string; description: string }> }>(raw));
+    res.json(extractJson<{ issues: ConsistencyIssue[] }>(raw));
   } catch (err) {
     res.status(500).json({ error: (err as Error).message });
   }

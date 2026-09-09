@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useShallow } from 'zustand/react/shallow';
-import type { ProposalKind } from '../../../shared/src/types';
+import type { ConsistencyIssue, ProposalKind } from '../../../shared/src/types';
 import { PROPOSAL_LABELS } from '../../../shared/src/types';
 import { api } from '../api/client';
 import { useStore } from '../state/store';
@@ -18,7 +18,7 @@ interface Proposal {
   error?: string;
 }
 
-interface Issue { severity: string; quote: string; description: string }
+type Issue = ConsistencyIssue;
 
 let propSeq = 1;
 

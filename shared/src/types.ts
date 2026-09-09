@@ -124,6 +124,13 @@ export interface ProposalRequest {
   kind: ProposalKind;
 }
 
+/** 一致性检查的一条问题（severity: high | medium | low） */
+export interface ConsistencyIssue {
+  severity: string;
+  quote: string;
+  description: string;
+}
+
 export const PROPOSAL_LABELS: Record<ProposalKind, string> = {
   polish: '润色',
   expand: '扩写',
