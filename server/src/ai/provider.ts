@@ -147,7 +147,9 @@ export async function* streamChat(
     model: profile.model,
     messages,
     stream: true,
-    temperature: opts.temperature ?? (opts.kind === 'json' ? 1.0 : profile.temperature ?? 1.1),
+    // JSON 结构任务要的是格式稳定，与文风发散无关，固定低温；
+    // 正文/改写任务才跟随 profile（或调用方显式传入的按任务温度）。
+    temperature: opts.temperature ?? (opts.kind === 'json' ? 0.35 : profile.temperature ?? 1.1),
     max_tokens: maxTokens,
     // DeepSeek 官方端点：关闭深度思考。推理长度不可控（实测会耗尽全部输出预算、
     // content 为 0 或把正文拦腰截断），结构化与正文任务均禁用；且思考与正文

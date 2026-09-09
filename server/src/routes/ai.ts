@@ -65,9 +65,10 @@ async function streamToTask(
   messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }>,
   kind: 'json' | 'prose' | 'summary',
   maxTokens?: number,
+  temperature?: number,
 ): Promise<string> {
   let full = '';
-  for await (const delta of streamChat(cfg, profile!, messages, { signal, kind, maxTokens })) {
+  for await (const delta of streamChat(cfg, profile!, messages, { signal, kind, maxTokens, temperature })) {
     full += delta;
     sse.delta(delta);
   }
@@ -481,11 +482,16 @@ aiRouter.post('/projects/:slug/propose', (req, res) => {
     instruction: body.instruction,
   });
 
+  // 按任务的发散度定温度：保语义任务低温求稳，求变化任务略高但不放纵
+  const kindTemperature: Record<string, number> = {
+    polish: 0.7, condense: 0.7, expand: 0.95, rewrite: 1.0, custom: 0.9,
+  };
+
   streamTask(req, res, async (sse, signal) => {
     await streamToTask(sse, signal, creativeProfile(cfg), cfg, [
       { role: 'system', content: prompt.system },
       { role: 'user', content: prompt.user },
-    ], 'prose');
+    ], 'prose', undefined, kindTemperature[body.kind] ?? 0.9);
   });
 });
 
