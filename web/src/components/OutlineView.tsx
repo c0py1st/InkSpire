@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useShallow } from 'zustand/react/shallow';
-import type { Outline } from '../../../shared/src/types';
+import type { ChapterStatus, Outline } from '../../../shared/src/types';
 import { chapterId as mkChapterId } from '../../../shared/src/util';
 import { api } from '../api/client';
 import { useStore } from '../state/store';
@@ -179,7 +179,7 @@ export function OutlineView() {
                   />
                   <select
                     value={c.status}
-                    onChange={(e) => mutateVolumes((vs) => { vs[vi].chapters[ci] = { ...c, status: e.target.value as never }; return vs; })}
+                    onChange={(e) => mutateVolumes((vs) => { vs[vi].chapters[ci] = { ...c, status: e.target.value as ChapterStatus }; return vs; })}
                   >
                     <option value="todo">未写</option>
                     <option value="draft">草稿</option>

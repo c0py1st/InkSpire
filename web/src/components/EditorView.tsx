@@ -206,7 +206,7 @@ export function EditorView() {
           type="text" className="ch-input" value={chapter.title}
           onChange={(e) => setChapterTitle(e.target.value)}
         />
-        <select value={chapter.status} onChange={(e) => setChapterStatus(e.target.value as never)}>
+        <select value={chapter.status} onChange={(e) => setChapterStatus(e.target.value as ChapterStatus)}>
           <option value="todo">未写</option>
           <option value="draft">草稿</option>
           <option value="revised">定稿</option>

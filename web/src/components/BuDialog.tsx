@@ -1,7 +1,9 @@
 import { Dialog } from '@base-ui-components/react/dialog';
+import type { DialogRootChangeEventReason } from '@base-ui-components/react/dialog';
 import type { ReactNode } from 'react';
 
-export type BuCloseReason = string;
+/** Base UI 关闭来源的字面量联合（非 string 假别名），消费端按来源精确比较 */
+export type BuCloseReason = DialogRootChangeEventReason;
 
 /**
  * Base UI Dialog 封装：
@@ -27,7 +29,7 @@ export function BuDialog(props: {
     <Dialog.Root
       open={props.open}
       onOpenChange={(open, details) => {
-        if (!open) props.onClose(details.reason as BuCloseReason);
+        if (!open) props.onClose(details.reason);
       }}
       disablePointerDismissal={!props.closeOnOutsidePress}
     >
