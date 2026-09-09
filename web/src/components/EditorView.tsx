@@ -15,7 +15,7 @@ const QUICK_ACTIONS: Array<{ kind: ProposalKind; label: string }> = [
 export function EditorView() {
   const {
     slug, bundle, chapter, setChapterTitle, setChapterStatus, setContent,
-    generating, generatingChapterId, startGeneration, cancelGeneration,
+    generating, finalizing, generatingChapterId, startGeneration, cancelGeneration,
     saveState, selection, setSelection, requestProposal, toast, saveChapter,
   } = useStore();
 
@@ -88,8 +88,8 @@ export function EditorView() {
   const pct = target > 0 ? Math.min(100, Math.round((curChars / target) * 100)) : 0;
 
   async function finalize() {
-    if (!slug || !chapter?.content.trim()) return;
-    useStore.setState({ generating: true });
+    if (!slug || !chapter?.content.trim() || finalizing) return;
+    useStore.setState({ finalizing: true });
     try {
       await saveChapter();
       const res = await api.finalizeChapter(slug, chapter.id, chapter.content);
@@ -101,7 +101,7 @@ export function EditorView() {
     } catch (err) {
       toast(`归档失败：${(err as Error).message}`, 'error');
     } finally {
-      useStore.setState({ generating: false });
+      useStore.setState({ finalizing: false });
     }
   }
 
@@ -223,12 +223,12 @@ export function EditorView() {
           <Btn small danger onClick={cancelGeneration} title="停止生成，已生成的部分会保留并保存">停止生成</Btn>
         ) : (
           <>
-            {chapter.content.trim() ? <Btn small onClick={() => void startGeneration('continue')}>续写</Btn> : null}
-            <Btn small onClick={() => void startGeneration('full')} title="按大纲 beat 从头生成本章（会覆盖现有内容，旧稿自动备份）">
+            {chapter.content.trim() ? <Btn small disabled={finalizing} onClick={() => void startGeneration('continue')}>续写</Btn> : null}
+            <Btn small disabled={finalizing} onClick={() => void startGeneration('full')} title="按大纲 beat 从头生成本章（会覆盖现有内容，旧稿自动备份）">
               {chapter.content.trim() ? '重新生成本章' : '生成本章'}
             </Btn>
-            <Btn small primary onClick={() => void finalize()} disabled={!chapter.content.trim()} title="写入本章记忆摘要并扫描新设定">
-              完成本章
+            <Btn small primary onClick={() => void finalize()} disabled={finalizing || !chapter.content.trim()} title="写入本章记忆摘要并扫描新设定">
+              {finalizing ? '归档中…' : '完成本章'}
             </Btn>
             <Btn small onClick={() => setHistoryOpen(true)} disabled={!chapter.content.trim()} title="查看自动备份的历史版本并恢复">历史</Btn>
             <ExportMenu slug={slug} />

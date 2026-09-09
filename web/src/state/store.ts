@@ -66,6 +66,7 @@ interface Store {
   chapter: ChapterDraft | null;
   saveState: SaveState;
   generating: boolean;
+  finalizing: boolean;                  // 「完成本章」归档进行中（与后台生成监视器独立，不共用 generating）
   generatingChapterId: string | null;   // 正在生成的目标章（可能不是当前打开的章）
   selection: Selection | null;
   pendingProposal: { kind: ProposalKind; instruction: string; nonce: number } | null;
@@ -139,6 +140,7 @@ export const useStore = create<Store>((set, get) => ({
   chapter: null,
   saveState: 'idle',
   generating: false,
+  finalizing: false,
   generatingChapterId: null,
   selection: null,
   pendingProposal: null,
