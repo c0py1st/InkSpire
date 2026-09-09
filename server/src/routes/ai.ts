@@ -57,10 +57,17 @@ function streamTask(
     });
 }
 
+/** 路由入口统一做模型配置检查：未配置直接 400，流式函数内部不再兜 null */
+function requireCreative(cfg: AppConfig, res: Response): ProviderProfile | null {
+  const p = creativeProfile(cfg);
+  if (!p) res.status(400).json({ error: '尚未配置模型，请先到设置页添加配置档' });
+  return p;
+}
+
 async function streamToTask(
   sse: Sse,
   signal: AbortSignal,
-  profile: ProviderProfile | null,
+  profile: ProviderProfile,
   cfg: AppConfig,
   messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }>,
   kind: 'json' | 'prose' | 'summary',
@@ -68,7 +75,7 @@ async function streamToTask(
   temperature?: number,
 ): Promise<string> {
   let full = '';
-  for await (const delta of streamChat(cfg, profile!, messages, { signal, kind, maxTokens, temperature })) {
+  for await (const delta of streamChat(cfg, profile, messages, { signal, kind, maxTokens, temperature })) {
     full += delta;
     sse.delta(delta);
   }
@@ -80,9 +87,11 @@ async function streamToTask(
 aiRouter.post('/wizard/kernel', (req, res) => {
   const { ideaPrompt, scale } = req.body as { ideaPrompt: string; scale: { volumeCount: number; chaptersPerVolume: number; wordsPerChapter: number } };
   const cfg = loadConfig();
+  const profile = requireCreative(cfg, res);
+  if (!profile) return;
   const prompt = kernelPrompt(ideaPrompt, scale);
   streamTask(req, res, async (sse, signal) => {
-    const full = await streamToTask(sse, signal, creativeProfile(cfg), cfg, [
+    const full = await streamToTask(sse, signal, profile, cfg, [
       { role: 'system', content: prompt.system },
       { role: 'user', content: prompt.user },
     ], 'json', 8192);
@@ -93,9 +102,11 @@ aiRouter.post('/wizard/kernel', (req, res) => {
 aiRouter.post('/wizard/volumes', (req, res) => {
   const { kernel, volumeCount } = req.body as { kernel: Kernel; volumeCount: number };
   const cfg = loadConfig();
+  const profile = requireCreative(cfg, res);
+  if (!profile) return;
   const prompt = volumesPrompt(kernel, volumeCount);
   streamTask(req, res, async (sse, signal) => {
-    const full = await streamToTask(sse, signal, creativeProfile(cfg), cfg, [
+    const full = await streamToTask(sse, signal, profile, cfg, [
       { role: 'system', content: prompt.system },
       { role: 'user', content: prompt.user },
     ], 'json', 8192);
@@ -108,13 +119,15 @@ aiRouter.post('/wizard/beats', (req, res) => {
     kernel: Kernel; volumes: Volume[]; volIndex: number; chapterCount: number;
   };
   const cfg = loadConfig();
+  const profile = requireCreative(cfg, res);
+  if (!profile) return;
   const vol = volumes[volIndex];
   if (!vol) return res.status(400).json({ error: '卷不存在' });
   const neighbors = [volumes[volIndex - 1], volumes[volIndex + 1]].filter(Boolean)
     .map((v) => ({ title: v.title, summary: v.summary }));
   const prompt = beatsPrompt(kernel, vol.title, vol.summary, chapterCount, neighbors);
   streamTask(req, res, async (sse, signal) => {
-    const full = await streamToTask(sse, signal, creativeProfile(cfg), cfg, [
+    const full = await streamToTask(sse, signal, profile, cfg, [
       { role: 'system', content: prompt.system },
       { role: 'user', content: prompt.user },
     ], 'json', 8192);
@@ -125,9 +138,11 @@ aiRouter.post('/wizard/beats', (req, res) => {
 aiRouter.post('/wizard/bible', (req, res) => {
   const { kernel, volumes } = req.body as { kernel: Kernel; volumes: Volume[] };
   const cfg = loadConfig();
+  const profile = requireCreative(cfg, res);
+  if (!profile) return;
   const prompt = biblePrompt(kernel, volumes);
   streamTask(req, res, async (sse, signal) => {
-    const full = await streamToTask(sse, signal, creativeProfile(cfg), cfg, [
+    const full = await streamToTask(sse, signal, profile, cfg, [
       { role: 'system', content: prompt.system },
       { role: 'user', content: prompt.user },
     ], 'json', 8192);
@@ -414,6 +429,8 @@ aiRouter.post('/projects/:slug/chat', (req, res) => {
     selection?: string;
   };
   const cfg = loadConfig();
+  const profile = requireCreative(cfg, res);
+  if (!profile) return;
   const outline = loadOutline(slug);
   const bundle = loadBundle(slug);
   const question = messages[messages.length - 1]?.content ?? '';
@@ -448,7 +465,7 @@ aiRouter.post('/projects/:slug/chat', (req, res) => {
   });
 
   streamTask(req, res, async (sse, signal) => {
-    await streamToTask(sse, signal, creativeProfile(cfg), cfg, [
+    await streamToTask(sse, signal, profile, cfg, [
       { role: 'system', content: prompt.system },
       { role: 'user', content: prompt.user },
     ], 'prose');
@@ -459,6 +476,8 @@ aiRouter.post('/projects/:slug/propose', (req, res) => {
   const { slug } = req.params;
   const body = req.body as ProposalRequest;
   const cfg = loadConfig();
+  const profile = requireCreative(cfg, res);
+  if (!profile) return;
   const outline = loadOutline(slug);
   if (!outline) return res.status(400).json({ error: '本书还没有大纲' });
   const bundle = loadBundle(slug);
@@ -488,7 +507,7 @@ aiRouter.post('/projects/:slug/propose', (req, res) => {
   };
 
   streamTask(req, res, async (sse, signal) => {
-    await streamToTask(sse, signal, creativeProfile(cfg), cfg, [
+    await streamToTask(sse, signal, profile, cfg, [
       { role: 'system', content: prompt.system },
       { role: 'user', content: prompt.user },
     ], 'prose', undefined, kindTemperature[body.kind] ?? 0.9);
