@@ -1,8 +1,8 @@
-import type { Kernel, Volume } from '../../../../shared/src/types';
+import type { Kernel, VolumeBrief } from '../../../../shared/src/types';
 import { ASSISTANT_BASE, JSON_ONLY } from './common';
 
 /** 第 4 步：设定集初稿（人物卡 + 世界观） */
-export function biblePrompt(kernel: Kernel, volumes: Volume[]): { system: string; user: string } {
+export function biblePrompt(kernel: Kernel, volumes: VolumeBrief[]): { system: string; user: string } {
   const volLines = volumes.map((v, i) => `${i + 1}. ${v.title}：${v.summary}`).join('\n');
   return {
     system: ASSISTANT_BASE,

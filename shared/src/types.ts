@@ -22,6 +22,12 @@ export interface Volume {
   chapters: ChapterBeat[];
 }
 
+/** 向导生成任务只需要卷的标题与梗概（不依赖章节结构） */
+export interface VolumeBrief {
+  title: string;
+  summary: string;
+}
+
 export interface Outline {
   premise: string;       // 一句话卖点
   genre: string;

@@ -1,6 +1,6 @@
 /** 与后端的全部交互。SSE 统一走 sse()。 */
 import type {
-  AppConfig, Bundle, ChapterFile, ChapterStatus, CharacterCard, ConsistencyIssue, Kernel, Outline, ProjectMeta, ProposalRequest, Suggestion, Volume,
+  AppConfig, Bundle, ChapterFile, ChapterStatus, CharacterCard, ConsistencyIssue, Kernel, Outline, ProjectMeta, ProposalRequest, Suggestion, Volume, VolumeBrief,
 } from '../../../shared/src/types';
 
 async function json<T>(res: Response): Promise<T> {
@@ -131,11 +131,11 @@ export const api = {
     sse<{ kernel: Kernel }>('/api/wizard/kernel', { ideaPrompt, scale }, onDelta),
   wizardVolumes: (kernel: Kernel, volumeCount: number, onDelta: (t: string) => void) =>
     sse<{ volumes: Array<{ title: string; summary: string }> }>('/api/wizard/volumes', { kernel, volumeCount }, onDelta),
-  wizardBeats: (kernel: Kernel, volumes: Volume[], volIndex: number, chapterCount: number, onDelta: (t: string) => void) =>
+  wizardBeats: (kernel: Kernel, volumes: VolumeBrief[], volIndex: number, chapterCount: number, onDelta: (t: string) => void) =>
     sse<{ chapters: Array<{ title: string; beat: string; pov?: string; characters?: string[] }> }>(
       '/api/wizard/beats', { kernel, volumes, volIndex, chapterCount }, onDelta,
     ),
-  wizardBible: (kernel: Kernel, volumes: Volume[], onDelta: (t: string) => void) =>
+  wizardBible: (kernel: Kernel, volumes: VolumeBrief[], onDelta: (t: string) => void) =>
     sse<{ bible: { characters: CharacterCard[]; worldview: string } }>('/api/wizard/bible', { kernel, volumes }, onDelta),
 
   /** 服务端后台生成：启动任务（服务端自己跑完并落盘，与页面是否存活无关） */

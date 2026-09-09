@@ -115,7 +115,7 @@ export function Wizard() {
         toast('请先生成故事内核', 'error');
         return false;
       }
-      const final = await api.wizardBeats(kernel, volumes as never, vi, scale.chaptersPerVolume, onDelta);
+      const final = await api.wizardBeats(kernel, volumes, vi, scale.chaptersPerVolume, onDelta);
       if (!final?.chapters?.length) throw new Error('未取到章节细纲');
       patchVol(vi, {
         chapters: final.chapters.map((c) => ({
@@ -131,7 +131,7 @@ export function Wizard() {
         toast('请先生成故事内核', 'error');
         return false;
       }
-      const final = await api.wizardBible(kernel, volumes as never, onDelta);
+      const final = await api.wizardBible(kernel, volumes, onDelta);
       if (!final?.bible) throw new Error('未取到设定集');
       setBibleChars(final.bible.characters.map((c, i) => ({ ...c, id: `wc-${i}` })));
       setWorldview(final.bible.worldview);

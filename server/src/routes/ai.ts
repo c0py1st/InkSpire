@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import type { Request, Response } from 'express';
 import {
-  AppConfig, ChapterBeat, ChapterStatus, CharacterCard, ConsistencyIssue, Kernel, ProposalRequest, ProviderProfile, Suggestion, Volume,
+  AppConfig, ChapterBeat, ChapterStatus, CharacterCard, ConsistencyIssue, Kernel, ProposalRequest, ProviderProfile, Suggestion, VolumeBrief,
 } from '../../../shared/src/types';
 import { loadConfig } from '../config';
 import { chatOnce, streamChat } from '../ai/provider';
@@ -116,7 +116,7 @@ aiRouter.post('/wizard/volumes', (req, res) => {
 
 aiRouter.post('/wizard/beats', (req, res) => {
   const { kernel, volumes, volIndex, chapterCount } = req.body as {
-    kernel: Kernel; volumes: Volume[]; volIndex: number; chapterCount: number;
+    kernel: Kernel; volumes: VolumeBrief[]; volIndex: number; chapterCount: number;
   };
   const cfg = loadConfig();
   const profile = requireCreative(cfg, res);
@@ -136,7 +136,7 @@ aiRouter.post('/wizard/beats', (req, res) => {
 });
 
 aiRouter.post('/wizard/bible', (req, res) => {
-  const { kernel, volumes } = req.body as { kernel: Kernel; volumes: Volume[] };
+  const { kernel, volumes } = req.body as { kernel: Kernel; volumes: VolumeBrief[] };
   const cfg = loadConfig();
   const profile = requireCreative(cfg, res);
   if (!profile) return;
