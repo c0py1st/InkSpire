@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react';
+import { useShallow } from 'zustand/react/shallow';
 import type { ChapterStatus, ProposalKind } from '../../../shared/src/types';
 import { api } from '../api/client';
 import { useStore } from '../state/store';
@@ -17,7 +18,13 @@ export function EditorView() {
     slug, bundle, chapter, setChapterTitle, setChapterStatus, setContent,
     generating, finalizing, generatingChapterId, startGeneration, cancelGeneration,
     saveState, selection, setSelection, requestProposal, toast, saveChapter,
-  } = useStore();
+  } = useStore(useShallow((s) => ({
+    slug: s.slug, bundle: s.bundle, chapter: s.chapter, setChapterTitle: s.setChapterTitle,
+    setChapterStatus: s.setChapterStatus, setContent: s.setContent, generating: s.generating,
+    finalizing: s.finalizing, generatingChapterId: s.generatingChapterId, startGeneration: s.startGeneration,
+    cancelGeneration: s.cancelGeneration, saveState: s.saveState, selection: s.selection,
+    setSelection: s.setSelection, requestProposal: s.requestProposal, toast: s.toast, saveChapter: s.saveChapter,
+  })));
 
   const taRef = useRef<HTMLTextAreaElement>(null);
   const [historyOpen, setHistoryOpen] = useState(false);

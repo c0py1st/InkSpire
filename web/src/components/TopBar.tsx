@@ -1,3 +1,4 @@
+import { useShallow } from 'zustand/react/shallow';
 import { useStore } from '../state/store';
 import { ThemeToggle } from './ThemeToggle';
 
@@ -5,7 +6,11 @@ export function TopBar() {
   const {
     slug, bundle, focusMode, setFocus, drawerOpen, setDrawer,
     setSettingsOpen, setWizardOpen, backHome, centerView, setView,
-  } = useStore();
+  } = useStore(useShallow((s) => ({
+    slug: s.slug, bundle: s.bundle, focusMode: s.focusMode, setFocus: s.setFocus,
+    drawerOpen: s.drawerOpen, setDrawer: s.setDrawer, setSettingsOpen: s.setSettingsOpen,
+    setWizardOpen: s.setWizardOpen, backHome: s.backHome, centerView: s.centerView, setView: s.setView,
+  })));
 
   // 直接求和即可：bundle 变化频率本就不高，无需手动 memo（React Compiler 也不认可此写法）
   const totalWords = bundle?.wordCounts

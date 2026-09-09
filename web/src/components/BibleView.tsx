@@ -1,10 +1,13 @@
 import { useState } from 'react';
+import { useShallow } from 'zustand/react/shallow';
 import type { CharacterCard } from '../../../shared/src/types';
 import { useStore } from '../state/store';
 import { Btn } from './primitives';
 
 export function BibleView() {
-  const { bundle, persistCharacters, persistWorldview, toast } = useStore();
+  const { bundle, persistCharacters, persistWorldview, toast } = useStore(useShallow((s) => ({
+    bundle: s.bundle, persistCharacters: s.persistCharacters, persistWorldview: s.persistWorldview, toast: s.toast,
+  })));
   // slug 变化（切换作品）时重置本地编辑态：渲染期间直接比较上一值，避免 effect 级联
   const [lastSlug, setLastSlug] = useState(bundle?.meta.slug);
   const [chars, setChars] = useState<CharacterCard[]>(bundle?.characters ?? []);

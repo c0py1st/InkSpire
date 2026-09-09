@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useShallow } from 'zustand/react/shallow';
 import type { Outline } from '../../../shared/src/types';
 import { chapterId as mkChapterId } from '../../../shared/src/util';
 import { api } from '../api/client';
@@ -7,7 +8,11 @@ import { BuDialog } from './BuDialog';
 import { Btn, Field } from './primitives';
 
 export function OutlineView() {
-  const { bundle, persistOutline, updateOutlineLocal, toast, openChapter, setView, reloadBundle } = useStore();
+  const { bundle, persistOutline, updateOutlineLocal, toast, openChapter, setView, reloadBundle } =
+    useStore(useShallow((s) => ({
+      bundle: s.bundle, persistOutline: s.persistOutline, updateOutlineLocal: s.updateOutlineLocal,
+      toast: s.toast, openChapter: s.openChapter, setView: s.setView, reloadBundle: s.reloadBundle,
+    })));
   const [refining, setRefining] = useState<number | null>(null);
   const [confirmVol, setConfirmVol] = useState<number | null>(null);
   /** 卷抽屉：默认全部收起，按卷 id 记录展开状态（用 id 而非下标，拖动排序后不错位） */

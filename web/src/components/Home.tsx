@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useShallow } from 'zustand/react/shallow';
 import type { ProjectMeta } from '../../../shared/src/types';
 import { api } from '../api/client';
 import { useStore } from '../state/store';
@@ -6,7 +7,11 @@ import { BuDialog } from './BuDialog';
 import { Btn } from './primitives';
 
 export function Home() {
-  const { projects, openProject, setWizardOpen, setSettingsOpen, loadProjects, toast } = useStore();
+  const { projects, openProject, setWizardOpen, setSettingsOpen, loadProjects, toast } =
+    useStore(useShallow((s) => ({
+      projects: s.projects, openProject: s.openProject, setWizardOpen: s.setWizardOpen,
+      setSettingsOpen: s.setSettingsOpen, loadProjects: s.loadProjects, toast: s.toast,
+    })));
   const [confirmSlug, setConfirmSlug] = useState<string | null>(null);
 
   useEffect(() => {

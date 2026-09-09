@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useShallow } from 'zustand/react/shallow';
 import type { AppConfig, ProviderProfile } from '../../../shared/src/types';
 import { PROVIDER_PRESETS } from '../../../shared/src/types';
 import { api } from '../api/client';
@@ -18,7 +19,9 @@ function matchPreset(baseURL: string) {
  * 添加配置只在列表追加一项并在右侧展开编辑；角色槽位（创作/辅助）在详情里指定。
  */
 export function SettingsModal() {
-  const { config, saveConfig, setSettingsOpen, toast } = useStore();
+  const { config, saveConfig, setSettingsOpen, toast } = useStore(useShallow((s) => ({
+    config: s.config, saveConfig: s.saveConfig, setSettingsOpen: s.setSettingsOpen, toast: s.toast,
+  })));
   const [draft, setDraft] = useState<AppConfig | null>(() => (config ? JSON.parse(JSON.stringify(config)) : null));
   const [selectedId, setSelectedId] = useState<string | null>(config?.providers[0]?.id ?? null);
   const [testing, setTesting] = useState(false);

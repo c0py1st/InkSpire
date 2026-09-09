@@ -1,4 +1,5 @@
 import { useEffect } from 'react';
+import { useShallow } from 'zustand/react/shallow';
 import { useStore } from './state/store';
 import { TopBar } from './components/TopBar';
 import { Home } from './components/Home';
@@ -11,7 +12,11 @@ import { SettingsModal } from './components/SettingsModal';
 import { Wizard } from './components/Wizard';
 
 export default function App() {
-  const { init, slug, focusMode, drawerOpen, toasts, settingsOpen, wizardOpen, centerView } = useStore();
+  const { init, slug, focusMode, drawerOpen, toasts, settingsOpen, wizardOpen, centerView } =
+    useStore(useShallow((s) => ({
+      init: s.init, slug: s.slug, focusMode: s.focusMode, drawerOpen: s.drawerOpen,
+      toasts: s.toasts, settingsOpen: s.settingsOpen, wizardOpen: s.wizardOpen, centerView: s.centerView,
+    })));
 
   useEffect(() => {
     void init();

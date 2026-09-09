@@ -1,9 +1,14 @@
 import { useState } from 'react';
+import { useShallow } from 'zustand/react/shallow';
 import { useStore } from '../state/store';
 import { Btn } from './primitives';
 
 export function LeftPanel() {
-  const { bundle, centerView, setView, openChapter, chapter, drawerOpen, setDrawer } = useStore();
+  const { bundle, centerView, setView, openChapter, chapter, drawerOpen, setDrawer } =
+    useStore(useShallow((s) => ({
+      bundle: s.bundle, centerView: s.centerView, setView: s.setView, openChapter: s.openChapter,
+      chapter: s.chapter, drawerOpen: s.drawerOpen, setDrawer: s.setDrawer,
+    })));
   const [openVols, setOpenVols] = useState<Set<number>>(new Set([0]));
   const [tab, setTab] = useState<'outline' | 'bible'>('outline');
 

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { useShallow } from 'zustand/react/shallow';
 import type { ProposalKind } from '../../../shared/src/types';
 import { PROPOSAL_LABELS } from '../../../shared/src/types';
 import { api } from '../api/client';
@@ -22,10 +23,19 @@ interface Issue { severity: string; quote: string; description: string }
 let propSeq = 1;
 
 export function AiDrawer() {
+  const drawerOpen = useStore((s) => s.drawerOpen);
+  const slug = useStore((s) => s.slug);
+  const bundle = useStore((s) => s.bundle);
+  const chapter = useStore((s) => s.chapter);
+  const selection = useStore((s) => s.selection);
+  const pendingProposal = useStore((s) => s.pendingProposal);
+  const suggestionsSeen = useStore((s) => s.suggestionsSeen);
   const {
-    drawerOpen, slug, bundle, chapter, selection, pendingProposal, consumeProposal,
-    applyReplacement, acceptSuggestion, dismissSuggestion, suggestionsSeen, markSuggestionsSeen, toast,
-  } = useStore();
+    consumeProposal, applyReplacement, acceptSuggestion, dismissSuggestion, markSuggestionsSeen, toast,
+  } = useStore(useShallow((s) => ({
+    consumeProposal: s.consumeProposal, applyReplacement: s.applyReplacement, acceptSuggestion: s.acceptSuggestion,
+    dismissSuggestion: s.dismissSuggestion, markSuggestionsSeen: s.markSuggestionsSeen, toast: s.toast,
+  })));
 
   const [tab, setTab] = useState<'chat' | 'props' | 'assist'>('chat');
   const [messages, setMessages] = useState<Array<{ role: 'user' | 'assistant'; content: string }>>([]);

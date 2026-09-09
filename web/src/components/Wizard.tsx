@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { useShallow } from 'zustand/react/shallow';
 import type { CharacterCard, Kernel } from '../../../shared/src/types';
 import { api } from '../api/client';
 import { useStore } from '../state/store';
@@ -11,7 +12,9 @@ interface WizVolume { title: string; summary: string; chapters: WizChapter[] }
 const STEPS = ['构想', '内核', '分卷', '章节细纲', '设定集', '成书'];
 
 export function Wizard() {
-  const { setWizardOpen, openProject, toast, config } = useStore();
+  const { setWizardOpen, openProject, toast, config } = useStore(useShallow((s) => ({
+    setWizardOpen: s.setWizardOpen, openProject: s.openProject, toast: s.toast, config: s.config,
+  })));
   const demo = !config?.mockMode && !(config?.providers ?? []).some((p) => p.apiKey.trim());
 
   const [step, setStep] = useState(0);
