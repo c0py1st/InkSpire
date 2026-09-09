@@ -205,7 +205,12 @@ export function AiDrawer() {
                   {p.streaming && <span style={{ color: 'var(--warn)', fontSize: 11 }}>生成中…</span>}
                 </div>
                 <div className="p-body">
-                  {p.error ? <span style={{ color: 'var(--danger)' }}>{p.error}</span> : <DiffView original={p.original} next={p.text} />}
+                  {p.error
+                    ? <span style={{ color: 'var(--danger)' }}>{p.error}</span>
+                    // 流式期间只显示纯文本：逐字重跑字符级 diff 是 O(n²)
+                    : p.streaming
+                      ? <div className="diff">{p.text || '…'}</div>
+                      : <DiffView original={p.original} next={p.text} />}
                 </div>
                 {!p.streaming && !p.error && (
                   <div className="p-actions">
