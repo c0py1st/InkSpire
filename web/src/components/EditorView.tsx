@@ -126,15 +126,19 @@ export function EditorView() {
       const ta = taRef.current;
       if (!ta) return;
       ta.focus();
-      ta.setSelectionRange(start, end); // 浏览器可能自动滚动容器，测量必须在其后
-      // 滚动的是外层 .center-scroll（textarea 自身不滚），复用工具条同款坐标换算
-      const container = ta.closest('.center-scroll');
-      const cRect = container?.getBoundingClientRect();
+      ta.setSelectionRange(start, end); // 浏览器可能自动滚动，测量必须在其后
+      // 布局中 textarea 恒等于可视高度、正文超长时是它自身内部滚动，
+      // 所以目标滚动量要算在 ta.scrollTop 上（.center-scroll 的 scrollTop 恒为 0）
       const pos = selectionViewportPos(ta, start);
-      const contentY = pos.y - (cRect?.top ?? 0) + (container?.scrollTop ?? 0);
-      if (container) container.scrollTop = Math.max(0, contentY - container.clientHeight * 0.4);
+      const contentY = pos.y + ta.scrollTop - ta.getBoundingClientRect().top;
+      ta.scrollTop = Math.max(0, contentY - ta.clientHeight * 0.4);
+      // 程序化 setSelectionRange 不触发 select 事件：主动捕获一次，让工具条跟上
+      dismissedRef.current = null;
+      captureSelection();
     });
-    // 依赖刻意用 chapter 而非 pendingJump：要等目标章内容真正载入后才定位
+    // 依赖刻意用 chapter 而非 pendingJump：要等目标章内容真正载入后才定位；
+    // captureSelection 每次渲染重建，加入依赖会让跳转重复执行（nonce 守卫也挡不住）
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [chapter?.id, chapter?.content]);
 
   if (!chapter) {
