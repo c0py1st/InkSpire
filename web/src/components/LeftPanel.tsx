@@ -66,6 +66,8 @@ export function LeftPanel() {
   };
 
   const suggCount = bundle.suggestions.length;
+  // 当前章贡献了几条未处理建议（旧数据无来源字段则不计入"本章"）
+  const suggHere = chapter ? bundle.suggestions.filter((s) => s.sourceChapterId === chapter.id).length : 0;
 
   return (
     <aside className="left-panel">
@@ -143,7 +145,9 @@ export function LeftPanel() {
       </div>
       <div className="left-footer">
         {suggCount > 0 && (
-          <span className="mock-dot" title="agent 在最新章节里发现了未建档的设定，去批注抽屉处理">{suggCount} 条新设定建议</span>
+          <span className="mock-dot" title="agent 在章节归档时发现了待确认的设定变更，去批注抽屉处理">
+            {suggHere > 0 ? `本章 ${suggHere} 条 · ` : ''}全书 {suggCount} 条待审建议
+          </span>
         )}
         <div style={{ flex: 1 }} />
         <Btn small ghost onClick={() => setDrawer(!drawerOpen)}>{drawerOpen ? '收起' : '批注'}</Btn>

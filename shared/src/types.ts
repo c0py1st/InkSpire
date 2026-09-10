@@ -63,6 +63,8 @@ export interface Suggestion {
   name: string;
   content: string;       // 建议补充的设定内容原文（state 类 = 新状态一句话）
   note?: string;         // 补充说明（state 类 = 剧情依据）
+  sourceChapterId?: string;    // 由哪一章的归档产生（旧数据可能没有）
+  sourceChapterTitle?: string;
   createdAt: string;
 }
 

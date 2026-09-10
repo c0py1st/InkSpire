@@ -392,6 +392,7 @@ aiRouter.post('/projects/:slug/finalize-chapter/:chapterId', async (req, res) =>
 
     const suggestions = loadSuggestions(slug);
     const existingNames = new Set(bundle.characters.map((c) => c.name));
+    const src = { sourceChapterId: chapterId, sourceChapterTitle: loc.chapter.title };
     const added: Suggestion[] = [];
     for (const nc of parsed.newCharacters ?? []) {
       if (!nc.name?.trim() || existingNames.has(nc.name.trim())) continue;
@@ -401,6 +402,7 @@ aiRouter.post('/projects/:slug/finalize-chapter/:chapterId', async (req, res) =>
         kind: 'character',
         name: nc.name.trim(),
         content: nc.reason ?? '',
+        ...src,
         createdAt: new Date().toISOString(),
       });
     }
@@ -409,6 +411,7 @@ aiRouter.post('/projects/:slug/finalize-chapter/:chapterId', async (req, res) =>
       kind: 'world' as const,
       name: '世界观补充',
       content: w,
+      ...src,
       createdAt: new Date().toISOString(),
     }));
     // 状态变更建议：只针对已建档人物；同名人物的旧待审状态卡被新观察覆盖
@@ -426,6 +429,7 @@ aiRouter.post('/projects/:slug/finalize-chapter/:chapterId', async (req, res) =>
         name,
         content: sc.newState.trim(),
         note: sc.reason?.trim() || undefined,
+        ...src,
         createdAt: new Date().toISOString(),
       });
     }

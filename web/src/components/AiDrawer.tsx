@@ -258,6 +258,8 @@ export function AiDrawer() {
               <div key={s.id} className="suggestion">
                 <span className="s-name">{s.name}</span>
                 <span style={{ color: 'var(--text-faint)', fontSize: 11 }}> · {s.kind === 'character' ? '人物' : s.kind === 'state' ? '状态更新' : '世界观'}</span>
+                {/* 来源章：旧数据无此字段时标"更早"，避免分不清是哪章攒下的 */}
+                <span style={{ color: 'var(--text-faint)', fontSize: 11 }}> · {s.sourceChapterTitle ? `来自《${s.sourceChapterTitle}》` : '更早'}</span>
                 <div style={{ marginTop: 4 }}>{s.content}{s.note && <span style={{ color: 'var(--text-faint)' }}>（依据：{s.note}）</span>}</div>
                 <div className="s-actions">
                   <Btn small primary onClick={() => void acceptSuggestion(s.id)}>{s.kind === 'state' ? '采纳并更新人物卡' : '采纳入设定集'}</Btn>
