@@ -151,13 +151,7 @@ aiRouter.post('/wizard/bible', (req, res) => {
   });
 });
 
-/* ================= 正文生成 ================= */
-
-aiRouter.post('/projects/:slug/generate-chapter/:chapterId', (req, res) => {
-  res.status(410).json({ error: '此接口已升级为服务端后台生成：/generate-bg' });
-});
-
-/* ================= 服务端后台生成 =================
+/* ================= 正文生成（服务端后台任务） =================
    生成任务在服务端执行并直接落盘：浏览器切走/刷新/关闭都不影响。
    页面通过 status 轮询 + progress SSE 订阅进度。 */
 

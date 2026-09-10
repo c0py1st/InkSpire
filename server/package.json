@@ -8,7 +8,6 @@
     "start": "tsx src/index.ts"
   },
   "dependencies": {
-    "diff": "^8.0.2",
     "express": "^4.21.2",
     "yaml": "^2.7.0"
   },
