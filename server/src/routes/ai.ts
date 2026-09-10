@@ -373,13 +373,19 @@ aiRouter.post('/projects/:slug/finalize-chapter/:chapterId', async (req, res) =>
       chapterTitle: loc.chapter.title,
       content: content.slice(0, 20000),
       knownCharacters: bundle.characters.map((c) => c.name),
+      characterStates: bundle.characters.map((c) => ({ name: c.name, state: c.state ?? '' })),
     });
     // 辅助 JSON 任务：deepseek 推理型模型需要为思考预留 token，给足 max_tokens
     const raw = await chatOnce(cfg, assistProfile(cfg), [
       { role: 'system', content: prompt.system },
       { role: 'user', content: prompt.user },
     ], { kind: 'json', temperature: 0.3, maxTokens: 4000 });
-    const parsed = extractJson<{ summary: string; newCharacters: Array<{ name: string; reason: string }>; worldNotes: string[] }>(raw);
+    const parsed = extractJson<{
+      summary: string;
+      newCharacters: Array<{ name: string; reason: string }>;
+      worldNotes: string[];
+      stateChanges?: Array<{ name: string; newState: string; reason?: string }>;
+    }>(raw);
 
     const summaries = { ...bundle.summaries, [chapterId]: parsed.summary };
     saveSummaries(slug, summaries);
@@ -405,10 +411,30 @@ aiRouter.post('/projects/:slug/finalize-chapter/:chapterId', async (req, res) =>
       content: w,
       createdAt: new Date().toISOString(),
     }));
-    const all = [...suggestions, ...added, ...worldAdded].slice(-50);
+    // 状态变更建议：只针对已建档人物；同名人物的旧待审状态卡被新观察覆盖
+    const cardByName = new Map(bundle.characters.map((c) => [c.name, c]));
+    const stateAdded: Suggestion[] = [];
+    for (const sc of parsed.stateChanges ?? []) {
+      const name = sc.name?.trim();
+      const card = name ? cardByName.get(name) : undefined;
+      if (!card || !sc.newState?.trim()) continue;
+      if ((card.state ?? '').trim() === sc.newState.trim()) continue;
+      if (stateAdded.some((s) => s.name === name)) continue;
+      stateAdded.push({
+        id: `sug-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+        kind: 'state',
+        name,
+        content: sc.newState.trim(),
+        note: sc.reason?.trim() || undefined,
+        createdAt: new Date().toISOString(),
+      });
+    }
+    const superseded = new Set(stateAdded.map((s) => s.name));
+    const kept = suggestions.filter((s) => !(s.kind === 'state' && superseded.has(s.name)));
+    const all = [...kept, ...added, ...worldAdded, ...stateAdded].slice(-50);
     saveSuggestions(slug, all);
 
-    res.json({ summary: parsed.summary, newSuggestions: [...added, ...worldAdded] });
+    res.json({ summary: parsed.summary, newSuggestions: [...added, ...worldAdded, ...stateAdded] });
   } catch (err) {
     res.status(500).json({ error: (err as Error).message });
   }

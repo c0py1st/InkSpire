@@ -481,12 +481,13 @@ export const useStore = create<Store>((set, get) => ({
   },
 
   async acceptSuggestion(id) {
-    const { slug } = get();
+    const { slug, bundle } = get();
     if (!slug) return;
+    const kind = bundle?.suggestions.find((s) => s.id === id)?.kind;
     try {
       await api.acceptSuggestion(slug, id);
       await get().reloadBundle();
-      get().toast('已加入人物卡', 'ok');
+      get().toast(kind === 'state' ? '人物卡状态已更新' : '已加入人物卡', 'ok');
     } catch (err) {
       get().toast((err as Error).message, 'error');
     }

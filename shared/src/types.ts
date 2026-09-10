@@ -59,9 +59,10 @@ export interface ProjectMeta {
 
 export interface Suggestion {
   id: string;
-  kind: 'character' | 'world';
+  kind: 'character' | 'world' | 'state';   // state = 已建档人物的当前状态变更建议
   name: string;
-  content: string;       // 建议补充的设定内容原文
+  content: string;       // 建议补充的设定内容原文（state 类 = 新状态一句话）
+  note?: string;         // 补充说明（state 类 = 剧情依据）
   createdAt: string;
 }
 

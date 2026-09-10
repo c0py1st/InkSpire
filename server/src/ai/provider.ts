@@ -93,6 +93,7 @@ function yieldMockJson(promptHint: string): string {
       summary: '【演示摘要】李慎查验盐车命案发现致命伤不在车轮而在咽喉，锁定第一嫌疑人周主簿，同时收到匿名警告信。',
       newCharacters: [],
       worldNotes: [],
+      stateChanges: [{ name: '李慎', newState: '右手在停尸房被锈蚀铁架划伤，已用烧酒简单处理，验尸时开始结痂发痒', reason: '本章查验盐车时留下新伤' }],
     });
   }
   if (promptHint.includes('逐项检查') || promptHint.includes('一致性检查')) {

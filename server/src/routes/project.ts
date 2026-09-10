@@ -138,7 +138,7 @@ projectRouter.put('/:slug/worldview', (req, res) => {
   }
 });
 
-/** 处理"建议补充设定"：接受 => 追加人物卡；忽略 => 删除建议 */
+/** 处理"建议补充设定"：接受 => 追加人物卡/更新状态；忽略 => 删除建议 */
 projectRouter.post('/:slug/suggestions/:id/accept', (req, res) => {
   try {
     const bundle = loadBundle(req.params.slug);
@@ -154,6 +154,12 @@ projectRouter.post('/:slug/suggestions/:id/accept', (req, res) => {
         background: '',
         relations: '',
       });
+      saveCharacters(req.params.slug, chars);
+    }
+    if (sug.kind === 'state') {
+      const card = chars.find((c) => c.name === sug.name);
+      if (!card) return res.status(400).json({ error: `人物「${sug.name}」已不在设定集，无法更新状态` });
+      card.state = sug.content;
       saveCharacters(req.params.slug, chars);
     }
     saveSuggestions(req.params.slug, bundle.suggestions.filter((s) => s.id !== req.params.id));

@@ -248,10 +248,10 @@ export function AiDrawer() {
             {sugg.map((s) => (
               <div key={s.id} className="suggestion">
                 <span className="s-name">{s.name}</span>
-                <span style={{ color: 'var(--text-faint)', fontSize: 11 }}> · {s.kind === 'character' ? '人物' : '世界观'}</span>
-                <div style={{ marginTop: 4 }}>{s.content}</div>
+                <span style={{ color: 'var(--text-faint)', fontSize: 11 }}> · {s.kind === 'character' ? '人物' : s.kind === 'state' ? '状态更新' : '世界观'}</span>
+                <div style={{ marginTop: 4 }}>{s.content}{s.note && <span style={{ color: 'var(--text-faint)' }}>（依据：{s.note}）</span>}</div>
                 <div className="s-actions">
-                  <Btn small primary onClick={() => void acceptSuggestion(s.id)}>采纳入设定集</Btn>
+                  <Btn small primary onClick={() => void acceptSuggestion(s.id)}>{s.kind === 'state' ? '采纳并更新人物卡' : '采纳入设定集'}</Btn>
                   <Btn small ghost onClick={() => void dismissSuggestion(s.id)}>忽略</Btn>
                 </div>
               </div>
