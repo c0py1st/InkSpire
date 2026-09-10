@@ -5,6 +5,13 @@ import { testProvider } from '../ai/provider';
 
 export const settingsRouter = Router();
 
+/** AbortSignal.timeout 触发的错误名不直观，统一翻译 */
+function errMessage(err: unknown): string {
+  const e = err as Error;
+  if (e.name === 'TimeoutError' || e.name === 'AbortError') return '请求超时（15 秒）：该平台无响应，稍后再试或检查接口地址';
+  return e.message;
+}
+
 settingsRouter.get('/', (_req, res) => {
   res.json(loadConfig());
 });
@@ -24,7 +31,7 @@ settingsRouter.post('/test', async (req, res) => {
     const message = await testProvider(cfg, p);
     res.json({ ok: true, message });
   } catch (err) {
-    res.status(400).json({ ok: false, message: (err as Error).message });
+    res.status(400).json({ ok: false, message: errMessage(err) });
   }
 });
 
@@ -35,6 +42,8 @@ settingsRouter.post('/models', async (req, res) => {
     const url = (p.baseURL || '').replace(/\/+$/, '') + '/models';
     const resp = await fetch(url, {
       headers: { Authorization: `Bearer ${p.apiKey ?? ''}` },
+      // 平台无响应时不能让设置页永远转圈
+      signal: AbortSignal.timeout(15000),
     });
     if (!resp.ok) {
       const t = await resp.text().catch(() => '');
@@ -47,6 +56,6 @@ settingsRouter.post('/models', async (req, res) => {
       .sort();
     res.json({ ok: true, models });
   } catch (err) {
-    res.status(400).json({ ok: false, models: [], message: (err as Error).message });
+    res.status(400).json({ ok: false, models: [], message: errMessage(err) });
   }
 });

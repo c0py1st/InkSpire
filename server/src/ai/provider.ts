@@ -271,6 +271,8 @@ export async function testProvider(cfg: AppConfig, p: ProviderProfile): Promise<
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${p.apiKey}` },
     body: JSON.stringify({ model: p.model, messages: [{ role: 'user', content: 'ping' }], max_tokens: 4 }),
+    // 平台无响应时不能让设置页永远转圈
+    signal: AbortSignal.timeout(15000),
   });
   if (res.ok) return `连接成功（HTTP ${res.status}）`;
   const t = await res.text().catch(() => '');
