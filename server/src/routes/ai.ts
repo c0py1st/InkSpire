@@ -7,7 +7,7 @@ import { loadConfig } from '../config';
 import { chatOnce, streamChat } from '../ai/provider';
 import { extractJson } from '../ai/json';
 import { Sse, abortOnClose } from '../ai/sse';
-import { buildChapterContext, buildSummariesText, locateChapter, selectionContext } from '../ai/memory';
+import { buildChapterContext, buildSummariesText, locateChapter, nextChapterIds, selectionContext } from '../ai/memory';
 import { kernelPrompt } from '../ai/prompts/kernel';
 import { volumesPrompt } from '../ai/prompts/volumes';
 import { beatsPrompt } from '../ai/prompts/beats';
@@ -151,20 +151,35 @@ aiRouter.post('/wizard/bible', (req, res) => {
   });
 });
 
-/* ================= 正文生成（服务端后台任务） =================
-   生成任务在服务端执行并直接落盘：浏览器切走/刷新/关闭都不影响。
+/* ================= 正文生成（服务端后台任务队列） =================
+   生成在服务端执行并直接落盘：浏览器切走/刷新/关闭都不影响。
+   单章生成 = 长度为 1 的队列；挂机连写 = 按大纲顺序排入 N 章。
    页面通过 status 轮询 + progress SSE 订阅进度。 */
+
+interface QueueItem { chapterId: string; mode: 'full' | 'continue' }
+
+interface ChapterResult {
+  chapterId: string;
+  status: 'done' | 'skipped' | 'error' | 'cancelled';
+  wordCount?: number;
+  /** 自动补完一次后仍达输出上限：结尾可能不完整，留给人工 */
+  truncated?: boolean;
+  /** 自动归档（摘要+建议探测）是否成功 */
+  archived?: boolean;
+  error?: string;
+}
 
 interface BgGenTask {
   slug: string;
-  chapterId: string;
-  mode: 'full' | 'continue';
+  items: QueueItem[];
+  /** 已完成/跳过的章结果（含建队时预知的 skipped） */
+  results: ChapterResult[];
+  index: number;
   status: 'running' | 'done' | 'error' | 'cancelled';
+  /** 当前章本次已生成字数 */
   chars: number;
   error?: string;
-  wordCount?: number;
-  /** finish_reason=length：正文达到输出上限被截断，可续写补完 */
-  truncated?: boolean;
+  stopRequested: boolean;
   ctl: AbortController;
 }
 
@@ -176,9 +191,35 @@ function emitGen(evt: unknown): void {
   for (const fn of genSubscribers) fn(line);
 }
 
-async function runBgGeneration(task: BgGenTask): Promise<void> {
-  const { slug, chapterId, mode } = task;
+function sleep(ms: number): Promise<void> { return new Promise((r) => setTimeout(r, ms)); }
+
+/** 请求的章是否属于当前队列（起点章、任一待写章、任一已出结果章都算） */
+function queuedChapter(task: BgGenTask, chapterId: string): boolean {
+  return task.items.some((i) => i.chapterId === chapterId)
+    || task.results.some((r) => r.chapterId === chapterId);
+}
+
+function queueSummary(task: BgGenTask) {
+  const cur = task.items[task.index]?.chapterId ?? '';
+  const doneWordTotal = task.results.reduce((a, r) => a + (r.wordCount ?? 0), 0);
+  const last = task.results[task.results.length - 1];
+  return {
+    status: task.status,
+    chars: task.chars,
+    error: task.error,
+    wordCount: task.items.length === 1 ? (last?.wordCount ?? 0) : doneWordTotal,
+    truncated: task.items.length === 1 ? last?.truncated : task.results.some((r) => r.truncated),
+    currentChapterId: cur,
+    queue: { index: task.index, total: task.items.length, results: task.results },
+  };
+}
+
+/** 生成一章：空流重试、截断自动补一次、落盘（full 覆盖前强制备份）、自动归档 */
+async function runOneChapter(task: BgGenTask, item: QueueItem): Promise<ChapterResult> {
+  const { slug } = task;
+  const { chapterId, mode } = item;
   let acc = '';
+  const result: ChapterResult = { chapterId, status: 'done' };
   try {
     const cfg = loadConfig();
     const outline = loadOutline(slug);
@@ -245,14 +286,14 @@ async function runBgGeneration(task: BgGenTask): Promise<void> {
       })) {
         acc += delta;
         task.chars = countChars(acc);
-        emitGen({ type: 'delta', text: delta });
+        emitGen({ type: 'delta', chapterId, text: delta });
       }
       if (countChars(acc) > startChars || task.ctl.signal.aborted) break;
       if (attempt < 3) {
         acc = mode === 'continue' && existing ? existing.content : '';
         task.chars = countChars(acc);
         console.error('[moge:bggen] 模型未返回正文（空流），2 秒后自动重试', attempt);
-        await new Promise((r) => setTimeout(r, 2000));
+        await sleep(2000);
       }
     }
 
@@ -260,14 +301,47 @@ async function runBgGeneration(task: BgGenTask): Promise<void> {
       throw new Error('模型未返回任何正文（已自动重试 3 次），请稍后再试');
     }
 
+    // 截断自动补完：续写一次收尾；仍截断则如实标记留给人工
+    if (finishReason === 'length' && !task.ctl.signal.aborted) {
+      let tailReason = '';
+      const before = acc;
+      const cont = continuePrompt(ctx, acc, '400~800 字，把本章收束到 beat 终点');
+      try {
+        for await (const delta of streamChat(cfg, creativeProfile(cfg), [
+          { role: 'system', content: cont.system },
+          { role: 'user', content: cont.user },
+        ], {
+          signal: task.ctl.signal, kind: 'prose',
+          onMeta: (m) => { tailReason = m.finishReason ?? tailReason; },
+        })) {
+          acc += delta;
+          task.chars = countChars(acc);
+          emitGen({ type: 'delta', chapterId, text: delta });
+        }
+      } catch { /* 补完失败保留原截断稿 */ }
+      if (countChars(acc) === countChars(before)) tailReason = finishReason; // 补完没产出，仍算截断
+      finishReason = tailReason;
+    }
+
     acc = ensureParagraphIndent(acc);
     // full 模式会覆盖盘上旧稿：无论长度先强制备份（旧稿很短时 <70% 规则不成立）
     const hadOld = mode === 'full' && !!readChapter(slug, chapterId).content.trim();
     const wordCount = saveChapterBody(slug, { id: chapterId, title, status, content: acc }, hadOld);
-    task.status = 'done';
-    task.wordCount = wordCount;
-    task.truncated = finishReason === 'length';
-    emitGen({ type: 'done', wordCount, truncated: task.truncated });
+    result.wordCount = wordCount;
+    result.truncated = finishReason === 'length';
+    emitGen({ type: 'done', chapterId, wordCount, truncated: result.truncated });
+
+    // 自动归档维持记忆闭环（连写下一章要读本章摘要）；归档失败只记录，不影响本章成功
+    if (!task.stopRequested && !task.ctl.signal.aborted) {
+      try {
+        await finalizeChapterCore(slug, chapterId);
+        result.archived = true;
+      } catch (err) {
+        result.archived = false;
+        console.error('[moge:bggen] 自动归档失败：', (err as Error).message);
+      }
+    }
+    return result;
   } catch (err) {
     const aborted = task.ctl.signal.aborted;
     // 出错/停止时同样保留已生成部分，直接落盘
@@ -279,14 +353,37 @@ async function runBgGeneration(task: BgGenTask): Promise<void> {
         const prevStatus = loc?.chapter.status ?? 'draft';
         const status: ChapterStatus = prevStatus === 'todo' ? 'draft' : prevStatus;
         const hadOld = mode === 'full' && !!readChapter(slug, chapterId).content.trim();
-        const wordCount = saveChapterBody(slug, { id: chapterId, title, status, content: ensureParagraphIndent(acc) }, hadOld);
-        task.wordCount = wordCount;
+        result.wordCount = saveChapterBody(slug, { id: chapterId, title, status, content: ensureParagraphIndent(acc) }, hadOld);
       }
     } catch { /* 保存部分结果失败则忽略 */ }
-    task.status = aborted ? 'cancelled' : 'error';
-    task.error = aborted ? '已停止' : (err as Error).message;
-    emitGen({ type: 'error', message: task.error });
+    result.status = aborted ? 'cancelled' : 'error';
+    result.error = aborted ? '已停止' : (err as Error).message;
+    return result;
   }
+}
+
+/** 队列主循环：逐章生成，失败即整队停止（已完成章保留），章间留喘息 */
+async function runBgQueue(task: BgGenTask): Promise<void> {
+  for (; task.index < task.items.length; task.index++) {
+    if (task.stopRequested || task.ctl.signal.aborted) break;
+    task.chars = 0;
+    const item = task.items[task.index];
+    emitGen({ type: 'chapter-start', chapterId: item.chapterId, index: task.index, total: task.items.length });
+    const result = await runOneChapter(task, item);
+    task.results.push(result);
+    emitGen({ type: 'chapter-done', ...result });
+    if (result.status === 'error') {
+      task.error = result.error;
+      task.status = 'error';
+      break;
+    }
+    if (result.status === 'cancelled') { task.status = 'cancelled'; break; }
+    if (task.index < task.items.length - 1) await sleep(1500); // 减轻高峰限流连锁
+  }
+  if (task.status === 'running') {
+    task.status = task.stopRequested || task.ctl.signal.aborted ? 'cancelled' : 'done';
+  }
+  emitGen({ type: 'queue-done', status: task.status, error: task.error, results: task.results });
 }
 
 aiRouter.post('/projects/:slug/generate-bg/:chapterId', (req, res) => {
@@ -303,25 +400,59 @@ aiRouter.post('/projects/:slug/generate-bg/:chapterId', (req, res) => {
     return res.status(404).json({ error: (err as Error).message });
   }
   const task: BgGenTask = {
-    slug, chapterId, mode: mode === 'continue' ? 'continue' : 'full',
-    status: 'running', chars: 0, ctl: new AbortController(),
+    slug,
+    items: [{ chapterId, mode: mode === 'continue' ? 'continue' : 'full' }],
+    results: [], index: 0,
+    status: 'running', chars: 0, stopRequested: false, ctl: new AbortController(),
   };
   bgGen = task;
-  void runBgGeneration(task);
+  void runBgQueue(task);
   res.json({ started: true });
+});
+
+/** 挂机连写：从指定章起按大纲顺序最多连写 count 章；已有正文的章跳过 */
+aiRouter.post('/projects/:slug/generate-marathon', (req, res) => {
+  const { slug } = req.params;
+  const fromChapterId = String(req.body?.fromChapterId ?? '');
+  const count = Math.max(1, Math.min(50, Number(req.body?.count) || 5));
+  if (bgGen && bgGen.status === 'running') {
+    return res.status(409).json({ error: '已有生成任务进行中，请等待完成或先停止' });
+  }
+  const outline = loadOutline(slug);
+  if (!outline) return res.status(400).json({ error: '本书还没有大纲' });
+  let planned: string[];
+  try {
+    planned = nextChapterIds(outline, fromChapterId, count);
+  } catch (err) {
+    return res.status(404).json({ error: (err as Error).message });
+  }
+  const task: BgGenTask = {
+    slug, items: [], results: [], index: 0,
+    status: 'running', chars: 0, stopRequested: false, ctl: new AbortController(),
+  };
+  for (const cid of planned) {
+    let hasBody = false;
+    try { hasBody = !!readChapter(slug, cid).content.trim(); } catch { /* 无文件视为空 */ }
+    if (hasBody) task.results.push({ chapterId: cid, status: 'skipped' });
+    else task.items.push({ chapterId: cid, mode: 'full' });
+  }
+  bgGen = task;
+  void runBgQueue(task);
+  res.json({ started: true, planned: task.items.length, skipped: task.results.length });
 });
 
 aiRouter.get('/projects/:slug/generation-status/:chapterId', (req, res) => {
   const { slug, chapterId } = req.params;
-  if (!bgGen || bgGen.slug !== slug || bgGen.chapterId !== chapterId) {
+  if (!bgGen || bgGen.slug !== slug || !queuedChapter(bgGen, chapterId)) {
     return res.json({ status: 'idle', chars: 0 });
   }
-  res.json({ status: bgGen.status, chars: bgGen.chars, error: bgGen.error, wordCount: bgGen.wordCount, truncated: bgGen.truncated });
+  res.json(queueSummary(bgGen));
 });
 
 aiRouter.post('/projects/:slug/generation-cancel/:chapterId', (req, res) => {
   const { slug, chapterId } = req.params;
-  if (bgGen && bgGen.slug === slug && bgGen.chapterId === chapterId && bgGen.status === 'running') {
+  if (bgGen && bgGen.slug === slug && queuedChapter(bgGen, chapterId) && bgGen.status === 'running') {
+    bgGen.stopRequested = true;
     bgGen.ctl.abort();
   }
   res.json({ ok: true });
@@ -337,7 +468,7 @@ aiRouter.get('/projects/:slug/generation-progress/:chapterId', (req, res) => {
     'X-Accel-Buffering': 'no',
   });
   res.flushHeaders();
-  if (bgGen && bgGen.slug === slug && bgGen.chapterId === chapterId) {
+  if (bgGen && bgGen.slug === slug && queuedChapter(bgGen, chapterId)) {
     res.write(`data: ${JSON.stringify({ type: 'chars', chars: bgGen.chars })}\n\n`);
   }
   const sub = (line: string) => {
