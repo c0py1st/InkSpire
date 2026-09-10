@@ -16,7 +16,7 @@ export function Home() {
 
   useEffect(() => {
     void loadProjects();
-  }, []);
+  }, [loadProjects]);
 
   return (
     <div className="home">

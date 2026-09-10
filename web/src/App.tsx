@@ -20,7 +20,7 @@ export default function App() {
 
   useEffect(() => {
     void init();
-  }, []);
+  }, [init]);
 
   return (
     <div className="app">

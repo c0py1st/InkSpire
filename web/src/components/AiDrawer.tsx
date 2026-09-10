@@ -68,6 +68,9 @@ export function AiDrawer() {
     }
     setTab('props');
     runProposal(sel.start, sel.end, sel.text, pendingProposal.kind, pendingProposal.instruction);
+    // 依赖数组只放 nonce：这是"按钮点一次、跑一次"的触发信号，
+    // 补全其余依赖会让章节内容每变一次就重发提案请求
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pendingProposal?.nonce]);
 
   async function runProposal(start: number, end: number, original: string, kind: ProposalKind, instruction: string) {

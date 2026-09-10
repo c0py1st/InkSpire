@@ -42,7 +42,7 @@ export function EditorView() {
   useEffect(() => {
     // 切章时清掉选区
     setSelection(null);
-  }, [chapter?.id]);
+  }, [chapter?.id, setSelection]);
 
   // 工具条被显式关闭（Esc/×）时记住选区范围：Escape 不折叠选区，随后的 keyup
   // 会用同一段选区再次触发 captureSelection，必须识别并保持关闭
@@ -310,7 +310,7 @@ function HistoryModal(props: { slug: string; chapterId: string; chapterTitle: st
         setList([]);
       }
     })();
-  }, [slug, chapterId]);
+  }, [slug, chapterId, toast]);
 
   async function previewStamp(stamp: string) {
     if (preview?.stamp === stamp) { setPreview(null); return; }
