@@ -1,6 +1,6 @@
 /** 与后端的全部交互。SSE 统一走 sse()。 */
 import type {
-  AppConfig, Bundle, ChapterFile, ChapterStatus, CharacterCard, ConsistencyIssue, Kernel, Outline, ProjectMeta, ProposalRequest, SearchHit, Suggestion, Volume, VolumeBrief,
+  AppConfig, Bundle, ChapterFile, ChapterStatus, CharacterCard, ConsistencyIssue, GenChapterResult, Kernel, Outline, ProjectMeta, ProposalRequest, SearchHit, Suggestion, Volume, VolumeBrief,
 } from '../../../shared/src/types';
 
 async function json<T>(res: Response): Promise<T> {
@@ -143,17 +143,25 @@ export const api = {
   /** 服务端后台生成：启动任务（服务端自己跑完并落盘，与页面是否存活无关） */
   startBackgroundGeneration: (slug: string, chapterId: string, mode: 'full' | 'continue') =>
     post<{ started: true }>(`/api/projects/${slug}/generate-bg/${chapterId}`, { mode }),
+  /** 挂机连写：从指定章起按大纲顺序最多连写 count 章（已有正文的章服务端自动跳过） */
+  startMarathon: (slug: string, fromChapterId: string, count: number) =>
+    post<{ started: true; planned: number; skipped: number }>(`/api/projects/${slug}/generate-marathon`, { fromChapterId, count }),
   generationStatus: (slug: string, chapterId: string) =>
-    get<{ status: 'idle' | 'running' | 'done' | 'error' | 'cancelled'; chars: number; error?: string; wordCount?: number; truncated?: boolean }>(
+    get<{
+      status: 'idle' | 'running' | 'done' | 'error' | 'cancelled';
+      chars: number; error?: string; wordCount?: number; truncated?: boolean;
+      currentChapterId?: string;
+      queue?: { index: number; total: number; results: GenChapterResult[] };
+    }>(
       `/api/projects/${slug}/generation-status/${chapterId}`,
     ),
   cancelBackgroundGeneration: (slug: string, chapterId: string) =>
     post<{ ok: true }>(`/api/projects/${slug}/generation-cancel/${chapterId}`, {}),
-  /** 订阅生成进度（SSE）。返回关闭函数。页面冻结时服务端生成不受影响。 */
+  /** 订阅生成进度（SSE）。onDelta 携带 delta 所属章（连写时区分）。返回关闭函数。 */
   openGenerationStream: (
     slug: string,
     chapterId: string,
-    onDelta: (t: string) => void,
+    onDelta: (text: string, chapterId?: string) => void,
     onDone?: () => void,
   ): (() => void) => {
     const ctl = new AbortController();
@@ -177,8 +185,8 @@ export const api = {
               const p = line.slice(5).trim();
               if (!p) continue;
               try {
-                const o = JSON.parse(p) as { type: string; text?: string };
-                if (o.type === 'delta' && o.text) onDelta(o.text);
+                const o = JSON.parse(p) as { type: string; text?: string; chapterId?: string };
+                if (o.type === 'delta' && o.text) onDelta(o.text, o.chapterId);
                 else if (o.type === 'done') onDone?.();
               } catch { /* 心跳行 */ }
             }

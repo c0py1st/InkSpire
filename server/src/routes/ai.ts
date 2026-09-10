@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import type { Request, Response } from 'express';
 import {
-  AppConfig, ChapterBeat, ChapterStatus, CharacterCard, ConsistencyIssue, Kernel, ProposalRequest, ProviderProfile, Suggestion, VolumeBrief,
+  AppConfig, ChapterBeat, ChapterStatus, CharacterCard, ConsistencyIssue, GenChapterResult, Kernel, ProposalRequest, ProviderProfile, Suggestion, VolumeBrief,
 } from '../../../shared/src/types';
 import { loadConfig } from '../config';
 import { chatOnce, streamChat } from '../ai/provider';
@@ -158,16 +158,7 @@ aiRouter.post('/wizard/bible', (req, res) => {
 
 interface QueueItem { chapterId: string; mode: 'full' | 'continue' }
 
-interface ChapterResult {
-  chapterId: string;
-  status: 'done' | 'skipped' | 'error' | 'cancelled';
-  wordCount?: number;
-  /** 自动补完一次后仍达输出上限：结尾可能不完整，留给人工 */
-  truncated?: boolean;
-  /** 自动归档（摘要+建议探测）是否成功 */
-  archived?: boolean;
-  error?: string;
-}
+type ChapterResult = GenChapterResult;
 
 interface BgGenTask {
   slug: string;

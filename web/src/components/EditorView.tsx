@@ -51,12 +51,13 @@ function selectionViewportPos(ta: HTMLTextAreaElement, start: number): { x: numb
 export function EditorView() {
   const {
     slug, bundle, chapter, setChapterTitle, setChapterStatus, setContent,
-    generating, finalizing, generatingChapterId, startGeneration, cancelGeneration,
+    generating, finalizing, generatingChapterId, genQueue, startGeneration, startMarathon, cancelGeneration,
     saveState, selection, setSelection, requestProposal, toast, saveChapter, reloadBundle,
   } = useStore(useShallow((s) => ({
     slug: s.slug, bundle: s.bundle, chapter: s.chapter, setChapterTitle: s.setChapterTitle,
     setChapterStatus: s.setChapterStatus, setContent: s.setContent, generating: s.generating,
-    finalizing: s.finalizing, generatingChapterId: s.generatingChapterId, startGeneration: s.startGeneration,
+    finalizing: s.finalizing, generatingChapterId: s.generatingChapterId, genQueue: s.genQueue,
+    startGeneration: s.startGeneration, startMarathon: s.startMarathon,
     cancelGeneration: s.cancelGeneration, saveState: s.saveState, selection: s.selection,
     setSelection: s.setSelection, requestProposal: s.requestProposal, toast: s.toast, saveChapter: s.saveChapter,
     reloadBundle: s.reloadBundle,
@@ -263,18 +264,23 @@ export function EditorView() {
         </span>
         <div style={{ flex: 1 }} />
         {generating && (
-          <span className="save-state dirty">
-            {genHere ? '生成中…' : `后台生成《${genTitle}》…`}
+          <span className="save-state dirty" title={genQueue ? '挂机连写中，可切走或关闭页面，服务端会继续生成并落盘' : '后台生成中，可切走或关闭页面'}>
+            {genQueue
+              ? `连写中 ${genQueue.index + 1}/${genQueue.total}·《${genTitle}》`
+              : genHere ? '生成中…' : `后台生成《${genTitle}》…`}
           </span>
         )}
         {generating ? (
-          <Btn small danger onClick={cancelGeneration} title="停止生成，已生成的部分会保留并保存">停止生成</Btn>
+          <Btn small danger onClick={cancelGeneration} title={genQueue ? '停止连写，已生成的章都会保留并保存' : '停止生成，已生成的部分会保留并保存'}>
+            {genQueue ? '停止连写' : '停止生成'}
+          </Btn>
         ) : (
           <>
             {chapter.content.trim() ? <Btn small disabled={finalizing} onClick={() => void startGeneration('continue')}>续写</Btn> : null}
             <Btn small disabled={finalizing} onClick={() => void startGeneration('full')} title="按大纲 beat 从头生成本章（会覆盖现有内容，旧稿自动备份）">
               {chapter.content.trim() ? '重新生成本章' : '生成本章'}
             </Btn>
+            <Btn small onClick={() => void startMarathon()} disabled={finalizing} title="从本章起按大纲顺序连写多章：跳过已有正文的章，每章写完自动归档进记忆，某章失败则整队停止">连写…</Btn>
             <Btn small primary onClick={() => void finalize()} disabled={finalizing || !chapter.content.trim()} title={archived ? '本章已归档过：改动正文后再次点击可刷新记忆摘要与设定建议' : '写入本章记忆摘要并扫描新设定'}>
               {finalizing ? '归档中…' : archived ? '重新归档本章' : '完成本章'}
             </Btn>

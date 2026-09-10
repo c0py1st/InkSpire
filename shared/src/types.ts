@@ -153,6 +153,18 @@ export interface ConsistencyIssue {
   description: string;
 }
 
+/** 后台生成队列的单章结果（status 轮询与 SSE 事件的线上形状） */
+export interface GenChapterResult {
+  chapterId: string;
+  status: 'done' | 'skipped' | 'error' | 'cancelled';
+  wordCount?: number;
+  /** 自动补完一次后仍达输出上限：结尾可能不完整 */
+  truncated?: boolean;
+  /** 自动归档（摘要+建议探测）是否成功 */
+  archived?: boolean;
+  error?: string;
+}
+
 export const PROPOSAL_LABELS: Record<ProposalKind, string> = {
   polish: '润色',
   expand: '扩写',

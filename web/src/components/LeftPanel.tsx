@@ -6,11 +6,12 @@ import { useStore } from '../state/store';
 import { Btn } from './primitives';
 
 export function LeftPanel() {
-  const { bundle, centerView, setView, openChapter, chapter, drawerOpen, setDrawer, slug, jumpTo, toast } =
+  const { bundle, centerView, setView, openChapter, chapter, drawerOpen, setDrawer, slug, jumpTo, toast, generating, generatingChapterId } =
     useStore(useShallow((s) => ({
       bundle: s.bundle, centerView: s.centerView, setView: s.setView, openChapter: s.openChapter,
       chapter: s.chapter, drawerOpen: s.drawerOpen, setDrawer: s.setDrawer,
       slug: s.slug, jumpTo: s.jumpTo, toast: s.toast,
+      generating: s.generating, generatingChapterId: s.generatingChapterId,
     })));
   const [openVols, setOpenVols] = useState<Set<number>>(new Set([0]));
   const [tab, setTab] = useState<'outline' | 'bible'>('outline');
@@ -124,9 +125,9 @@ export function LeftPanel() {
                       onClick={() => void openChapter(c.id)}
                       title={c.beat}
                     >
-                      <span className={`status-dot ${c.status}`}></span>
+                      <span className={`status-dot ${c.status}${generating && generatingChapterId === c.id ? ' gen' : ''}`}></span>
                       <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.title}</span>
-                      <span className="ch-wc">{bundle.wordCounts[c.id] ? bundle.wordCounts[c.id].toLocaleString() : ''}</span>
+                      <span className="ch-wc">{bundle.wordCounts[c.id] ? bundle.wordCounts[c.id].toLocaleString() : (generating && generatingChapterId === c.id ? '连写中…' : '')}</span>
                     </div>
                   ))}
               </div>

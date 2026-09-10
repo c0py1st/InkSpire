@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import type {
-  AppConfig, Bundle, ChapterStatus, CharacterCard, Outline, ProjectMeta, ProposalKind,
+  AppConfig, Bundle, ChapterStatus, CharacterCard, GenChapterResult, Outline, ProjectMeta, ProposalKind,
 } from '../../../shared/src/types';
 import { atParagraphStart, ensureParagraphIndent } from '../../../shared/src/util';
 import { api } from '../api/client';
@@ -67,7 +67,8 @@ interface Store {
   saveState: SaveState;
   generating: boolean;
   finalizing: boolean;                  // 「完成本章」归档进行中（与后台生成监视器独立，不共用 generating）
-  generatingChapterId: string | null;   // 正在生成的目标章（可能不是当前打开的章）
+  generatingChapterId: string | null;   // 正在生成的目标章（连写时是当前队列章）
+  genQueue: { index: number; total: number } | null; // 连写进度（单章生成时为 null）
   selection: Selection | null;
   pendingProposal: { kind: ProposalKind; instruction: string; nonce: number } | null;
   pendingJump: { chapterId: string; offset: number; query: string; nonce: number } | null; // 检索跳转：目标章载入后定位并选中
@@ -99,9 +100,10 @@ interface Store {
   applyReplacement: (start: number, end: number, text: string) => Promise<void>;
 
   startGeneration: (mode: 'full' | 'continue') => Promise<void>;
+  startMarathon: () => Promise<void>;
   cancelGeneration: () => void;
   syncGenerationStatus: () => Promise<void>;
-  finishGenerationWatch: (status: string, error?: string, wordCount?: number, truncated?: boolean) => Promise<void>;
+  finishGenerationWatch: (status: string, error?: string, wordCount?: number, truncated?: boolean, results?: GenChapterResult[]) => Promise<void>;
 
   setSelection: (sel: Selection | null) => void;
   requestProposal: (kind: ProposalKind, instruction?: string) => void;
@@ -125,6 +127,32 @@ let genSlug: string | null = null;       // 后台生成任务所属作品
 let pollTimer: ReturnType<typeof setInterval> | null = null;
 let closeGenStream: (() => void) | null = null;
 let envListenersBound = false;           // StrictMode 下 init() 跑两遍，守卫避免重复注册全局监听
+// 连写回显：按"当前流式章"累积增量；章切换时归零重攒，仅回显打开着的那章
+let genAcc: { chapterId: string; text: string } | null = null;
+
+/** 挂载对服务端后台队列的监视：SSE 增量回显 + 状态轮询收尾（单章与连写共用） */
+function beginGenerationWatch(slug: string, originId: string, queue: { index: number; total: number } | null) {
+  genSlug = slug;
+  genAcc = null;
+  useStore.setState({ generating: true, generatingChapterId: originId, genQueue: queue });
+
+  closeGenStream = api.openGenerationStream(slug, originId, (text, deltaChapterId) => {
+    const cur = useStore.getState();
+    const cid = deltaChapterId ?? originId;
+    if (cur.generatingChapterId !== cid) {
+      // 队列推进到下一章：切换目标章，从头回显
+      useStore.setState({ generatingChapterId: cid });
+      if (cur.chapter?.id === cid) cur.setStreamContent('');
+    }
+    if (!genAcc || genAcc.chapterId !== cid) genAcc = { chapterId: cid, text: '' };
+    genAcc.text += text;
+    const now = useStore.getState();
+    if (now.chapter?.id === cid && now.slug === genSlug) now.setStreamContent(genAcc.text);
+  });
+
+  pollTimer = setInterval(() => void useStore.getState().syncGenerationStatus(), 1500);
+  void useStore.getState().syncGenerationStatus();
+}
 
 export const useStore = create<Store>((set, get) => ({
   theme: initialThemePref(),
@@ -145,6 +173,7 @@ export const useStore = create<Store>((set, get) => ({
   generating: false,
   finalizing: false,
   generatingChapterId: null,
+  genQueue: null,
   selection: null,
   pendingProposal: null,
   pendingJump: null,
@@ -286,21 +315,37 @@ export const useStore = create<Store>((set, get) => ({
       get().toast(`启动生成失败：${(err as Error).message}`, 'error');
       return;
     }
-    genSlug = st.slug;
-    set({ generating: true, generatingChapterId: targetId });
-
+    beginGenerationWatch(st.slug, targetId, null);
     // 清空目标章显示（从头生成时），从服务端增量流实时回显
-    let acc = mode === 'continue' ? st.chapter.content : '';
     if (mode === 'full' && get().chapter?.id === targetId) get().setStreamContent('');
+  },
 
-    closeGenStream = api.openGenerationStream(genSlug, targetId, (delta) => {
-      acc += delta;
-      const cur = get();
-      if (cur.chapter?.id === targetId && cur.slug === genSlug) cur.setStreamContent(acc);
-    });
+  /** 挂机连写：从当前打开章起按大纲顺序连写 N 章（有正文的章服务端自动跳过） */
+  async startMarathon() {
+    const st = get();
+    if (!st.slug || !st.chapter || st.generating || genInFlight) return;
+    const input = window.prompt('从本章起按大纲顺序连写几章？（已有正文的章会自动跳过）', '5');
+    if (input === null) return;
+    const count = Math.max(1, Math.min(50, Number(input) || 5));
+    genInFlight = true;
+    const originId = st.chapter.id;
 
-    pollTimer = setInterval(() => void get().syncGenerationStatus(), 1500);
-    void get().syncGenerationStatus();
+    if (get().saveState === 'dirty') {
+      await get().saveChapter();
+    }
+
+    try {
+      const r = await api.startMarathon(st.slug, originId, count);
+      if (r.planned === 0) {
+        genInFlight = false;
+        get().toast(`范围内 ${r.skipped} 章都已有正文，没有可写的空白章`, 'info');
+        return;
+      }
+      beginGenerationWatch(st.slug, originId, { index: 0, total: r.planned });
+    } catch (err) {
+      genInFlight = false;
+      get().toast(`启动连写失败：${(err as Error).message}`, 'error');
+    }
   },
 
   /** 轮询/回前台时同步服务端生成状态；任务结束则收尾（重新拉取已落盘的章节内容） */
@@ -311,31 +356,55 @@ export const useStore = create<Store>((set, get) => ({
     try {
       s = await api.generationStatus(genSlug, st.generatingChapterId);
     } catch { return; } // 网络抖动，下个轮询再试
-    if (s.status === 'running') return;
-    await get().finishGenerationWatch(s.status, s.error, s.wordCount, s.truncated);
+    if (s.status === 'running') {
+      // 每次轮询刷新队列进度（连写时 index 随章推进；单章 total=1 无需显示）
+      if (s.queue && s.queue.total > 1) {
+        set({ genQueue: { index: s.queue.index, total: s.queue.total } });
+      }
+      return;
+    }
+    await get().finishGenerationWatch(s.status, s.error, s.wordCount, s.truncated, s.queue?.results);
   },
 
-  async finishGenerationWatch(status, error, wordCount, truncated) {
+  async finishGenerationWatch(status, error, wordCount, truncated, results) {
     if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
     if (closeGenStream) { closeGenStream(); closeGenStream = null; }
-    const targetId = get().generatingChapterId;
-    const slug = genSlug;
-    set({ generating: false, generatingChapterId: null });
+    genAcc = null;
+    const wasMarathon = get().genQueue !== null;
+    set({ generating: false, generatingChapterId: null, genQueue: null });
     genInFlight = false;
-    if (!targetId || !slug) return;
+    const slug = genSlug;
+    const targetId = get().chapter?.id ?? null;
+    if (!slug) return;
 
-    // 结果已在服务端落盘：重新拉取章节内容与字数
+    // 结果已在服务端落盘：重新拉取当前章内容与全量 bundle（字数/摘要/建议都已更新）
     try {
-      const cur = get();
-      const ch = await api.getChapter(slug, targetId);
-      if (cur.slug === slug && cur.chapter?.id === targetId) {
-        set({ chapter: { ...cur.chapter, content: ch.content, status: ch.status, title: ch.title }, saveState: 'saved' });
+      if (targetId) {
+        const ch = await api.getChapter(slug, targetId);
+        const now = get();
+        if (now.slug === slug && now.chapter?.id === targetId) {
+          set({ chapter: { ...now.chapter, content: ch.content, status: ch.status, title: ch.title }, saveState: 'saved' });
+        }
       }
       const fresh = get();
       if (fresh.slug === slug && fresh.bundle) {
         await fresh.reloadBundle();
       }
-      const title = ch.title;
+      if (wasMarathon && results) {
+        const doneN = results.filter((r) => r.status === 'done').length;
+        const skipN = results.filter((r) => r.status === 'skipped').length;
+        const truncN = results.filter((r) => r.truncated).length;
+        const totalWords = results.reduce((a, r) => a + (r.wordCount ?? 0), 0);
+        const bits = [`连写结束：写了 ${doneN} 章${skipN ? `、跳过有正文的 ${skipN} 章` : ''}，共 ${totalWords.toLocaleString()} 字`];
+        if (truncN) bits.push(`${truncN} 章结尾可能不完整，可打开该章点「续写」补完`);
+        bits.push('摘要已进记忆、设定建议攒在批注抽屉');
+        if (status === 'cancelled') bits.unshift('已停止——');
+        else if (status === 'error') bits.unshift(`中途失败（${error ?? '未知错误'}）：`);
+        get().toast(bits.join('；'), status === 'error' ? 'error' : 'ok');
+        return;
+      }
+      if (!targetId) return;
+      const title = get().bundle?.outline?.volumes.flatMap((v) => v.chapters).find((c) => c.id === targetId)?.title ?? '本章';
       if (status === 'done') {
         get().toast(
           truncated
