@@ -52,13 +52,14 @@ export function EditorView() {
   const {
     slug, bundle, chapter, setChapterTitle, setChapterStatus, setContent,
     generating, finalizing, generatingChapterId, startGeneration, cancelGeneration,
-    saveState, selection, setSelection, requestProposal, toast, saveChapter,
+    saveState, selection, setSelection, requestProposal, toast, saveChapter, reloadBundle,
   } = useStore(useShallow((s) => ({
     slug: s.slug, bundle: s.bundle, chapter: s.chapter, setChapterTitle: s.setChapterTitle,
     setChapterStatus: s.setChapterStatus, setContent: s.setContent, generating: s.generating,
     finalizing: s.finalizing, generatingChapterId: s.generatingChapterId, startGeneration: s.startGeneration,
     cancelGeneration: s.cancelGeneration, saveState: s.saveState, selection: s.selection,
     setSelection: s.setSelection, requestProposal: s.requestProposal, toast: s.toast, saveChapter: s.saveChapter,
+    reloadBundle: s.reloadBundle,
     pendingJump: s.pendingJump,
   })));
 
@@ -163,6 +164,9 @@ export function EditorView() {
   const curChars = chapter.content.replace(/\s/g, '').length;
   const target = bundle?.meta.wordsPerChapter ?? 0;
   const pct = target > 0 ? Math.min(100, Math.round((curChars / target) * 100)) : 0;
+  // 本章是否已归档过（记忆里有摘要）：归档过则按钮改称"重新归档"，
+  // 允许再次点击——改了正文重新归档才能刷新记忆与状态建议
+  const archived = !!bundle?.summaries?.[chapter.id];
 
   async function finalize() {
     if (!slug || !chapter?.content.trim() || finalizing) return;
@@ -170,6 +174,8 @@ export function EditorView() {
     try {
       await saveChapter();
       const res = await api.finalizeChapter(slug, chapter.id, chapter.content);
+      // 刷新 bundle：建议列表/摘要在内存里是旧的，不重拉右侧「建议」不会实时更新
+      await reloadBundle();
       if (res?.newSuggestions?.length) {
         toast(`agent 新增 ${res.newSuggestions.length} 条设定建议，去批注抽屉查看`, 'ok');
       } else {
@@ -269,8 +275,8 @@ export function EditorView() {
             <Btn small disabled={finalizing} onClick={() => void startGeneration('full')} title="按大纲 beat 从头生成本章（会覆盖现有内容，旧稿自动备份）">
               {chapter.content.trim() ? '重新生成本章' : '生成本章'}
             </Btn>
-            <Btn small primary onClick={() => void finalize()} disabled={finalizing || !chapter.content.trim()} title="写入本章记忆摘要并扫描新设定">
-              {finalizing ? '归档中…' : '完成本章'}
+            <Btn small primary onClick={() => void finalize()} disabled={finalizing || !chapter.content.trim()} title={archived ? '本章已归档过：改动正文后再次点击可刷新记忆摘要与设定建议' : '写入本章记忆摘要并扫描新设定'}>
+              {finalizing ? '归档中…' : archived ? '重新归档本章' : '完成本章'}
             </Btn>
             <Btn small onClick={() => setHistoryOpen(true)} disabled={!chapter.content.trim()} title="查看自动备份的历史版本并恢复">历史</Btn>
             <ExportMenu slug={slug} />
