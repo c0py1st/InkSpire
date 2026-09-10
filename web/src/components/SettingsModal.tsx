@@ -331,7 +331,10 @@ function ProvDetail(props: {
             value={p.maxTokens ?? ''}
             onChange={(e) => props.onChange({ maxTokens: e.target.value === '' ? undefined : Number(e.target.value) })}
           />
-          <small>一次最多生成多少字；建议 ≥ 每章目标字数 × 2。大纲类 JSON 任务会自动使用不低于 8192 的上限，不受此项过低影响</small>
+          {(p.maxTokens ?? 0) > 0 && (p.maxTokens ?? 0) < 8192 && (
+            <small style={{ color: 'var(--warn)' }}>偏低：长正文/长回答会被拦腰截断，建议 ≥ 8192</small>
+          )}
+          <small>一次最多生成多少字；建议 ≥ 8192 且 ≥ 每章目标字数 × 2。DeepSeek 官方正文任务会自动抬到不低于 16384；其他平台严格按此值截断，设太小会把长回答拦腰切掉。大纲类 JSON 任务不受此项影响（固定 ≥ 8192）</small>
         </label>
         <label className="param">
           <span className="cap" title="模型上下文长度，用于估算前情摘要注入预算">上下文窗口 tokens</span>
