@@ -70,6 +70,7 @@ interface Store {
   generatingChapterId: string | null;   // 正在生成的目标章（可能不是当前打开的章）
   selection: Selection | null;
   pendingProposal: { kind: ProposalKind; instruction: string; nonce: number } | null;
+  pendingJump: { chapterId: string; offset: number; query: string; nonce: number } | null; // 检索跳转：目标章载入后定位并选中
   suggestionsSeen: number;
 
   // actions
@@ -105,6 +106,7 @@ interface Store {
   setSelection: (sel: Selection | null) => void;
   requestProposal: (kind: ProposalKind, instruction?: string) => void;
   consumeProposal: () => void;
+  jumpTo: (chapterId: string, offset: number, query: string) => Promise<void>;
 
   updateOutlineLocal: (outline: Outline) => void;
   persistOutline: (outline: Outline) => Promise<void>;
@@ -145,6 +147,7 @@ export const useStore = create<Store>((set, get) => ({
   generatingChapterId: null,
   selection: null,
   pendingProposal: null,
+  pendingJump: null,
   suggestionsSeen: 0,
 
   async init() {
@@ -439,6 +442,11 @@ export const useStore = create<Store>((set, get) => ({
 
   consumeProposal() {
     set({ pendingProposal: null });
+  },
+
+  async jumpTo(chapterId, offset, query) {
+    set({ pendingJump: { chapterId, offset, query, nonce: Date.now() } });
+    await get().openChapter(chapterId); // 内含脏稿冲刷与视图切换；pendingJump 留给 EditorView 消费
   },
 
   updateOutlineLocal(outline) {

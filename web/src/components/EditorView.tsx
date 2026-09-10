@@ -13,6 +13,41 @@ const QUICK_ACTIONS: Array<{ kind: ProposalKind; label: string }> = [
   { kind: 'rewrite', label: '换个写法' },
 ];
 
+/**
+ * 用"镜像层"测量 textarea 内某个字符偏移在视口中的坐标：
+ * 建一个与 textarea 同字体/同宽度的隐藏 div，复制偏移前文本并追加分隔符 span，
+ * span 的位置即该字符所在行位置。纯 DOM 测量，无副作用。
+ */
+function selectionViewportPos(ta: HTMLTextAreaElement, start: number): { x: number; y: number } {
+  const taRect = ta.getBoundingClientRect();
+  const cs = window.getComputedStyle(ta);
+  const mirror = document.createElement('div');
+  for (const k of [
+    'fontFamily', 'fontSize', 'fontWeight', 'fontStyle', 'letterSpacing', 'lineHeight',
+    'paddingLeft', 'paddingRight', 'paddingTop', 'paddingBottom',
+    'borderLeftWidth', 'borderRightWidth', 'borderTopWidth', 'borderBottomWidth', 'boxSizing',
+  ] as const) {
+    (mirror.style as unknown as Record<string, string>)[k] = cs[k];
+  }
+  mirror.style.position = 'fixed';
+  mirror.style.left = `${taRect.left}px`;
+  mirror.style.top = `${taRect.top}px`;
+  mirror.style.width = `${ta.clientWidth}px`;
+  mirror.style.height = 'auto';
+  mirror.style.visibility = 'hidden';
+  mirror.style.whiteSpace = 'pre-wrap';
+  mirror.style.overflowWrap = 'break-word';
+  mirror.style.overflow = 'hidden';
+  mirror.textContent = ta.value.slice(0, start);
+  const marker = document.createElement('span');
+  marker.textContent = '\u200b';
+  mirror.appendChild(marker);
+  document.body.appendChild(mirror);
+  const mRect = marker.getBoundingClientRect();
+  mirror.remove();
+  return { x: mRect.left, y: mRect.bottom - ta.scrollTop };
+}
+
 export function EditorView() {
   const {
     slug, bundle, chapter, setChapterTitle, setChapterStatus, setContent,
@@ -24,6 +59,7 @@ export function EditorView() {
     finalizing: s.finalizing, generatingChapterId: s.generatingChapterId, startGeneration: s.startGeneration,
     cancelGeneration: s.cancelGeneration, saveState: s.saveState, selection: s.selection,
     setSelection: s.setSelection, requestProposal: s.requestProposal, toast: s.toast, saveChapter: s.saveChapter,
+    pendingJump: s.pendingJump,
   })));
 
   const taRef = useRef<HTMLTextAreaElement>(null);
@@ -71,6 +107,36 @@ export function EditorView() {
     };
   }, [selection, setSelection]);
 
+  // 检索跳转：目标章载入完成后，定位命中词、滚动到视野并选中
+  const handledJumpRef = useRef(0);
+  useEffect(() => {
+    const jump = useStore.getState().pendingJump;
+    if (!jump || jump.nonce === handledJumpRef.current) return;
+    const ch = useStore.getState().chapter;
+    if (!ch || ch.id !== jump.chapterId) return; // 目标章尚未载入
+    handledJumpRef.current = jump.nonce;
+    useStore.setState({ pendingJump: null });
+    const text = ch.content;
+    // openChapter 可能做过缩进规整使偏移漂移：以原偏移为起点就近重找查询词
+    let at = text.indexOf(jump.query, Math.max(0, jump.offset - 8));
+    if (at < 0) at = text.indexOf(jump.query);
+    const start = at >= 0 ? at : Math.min(jump.offset, text.length);
+    const end = at >= 0 ? start + jump.query.length : start;
+    requestAnimationFrame(() => {
+      const ta = taRef.current;
+      if (!ta) return;
+      ta.focus();
+      ta.setSelectionRange(start, end); // 浏览器可能自动滚动容器，测量必须在其后
+      // 滚动的是外层 .center-scroll（textarea 自身不滚），复用工具条同款坐标换算
+      const container = ta.closest('.center-scroll');
+      const cRect = container?.getBoundingClientRect();
+      const pos = selectionViewportPos(ta, start);
+      const contentY = pos.y - (cRect?.top ?? 0) + (container?.scrollTop ?? 0);
+      if (container) container.scrollTop = Math.max(0, contentY - container.clientHeight * 0.4);
+    });
+    // 依赖刻意用 chapter 而非 pendingJump：要等目标章内容真正载入后才定位
+  }, [chapter?.id, chapter?.content]);
+
   if (!chapter) {
     return (
       <div className="center-scroll">
@@ -110,41 +176,6 @@ export function EditorView() {
     } finally {
       useStore.setState({ finalizing: false });
     }
-  }
-
-  /**
-   * 用"镜像层"测量选区起点在视口中的真实坐标：
-   * 建一个与 textarea 同字体/同宽度的隐藏 div，复制光标前文本并追加分隔符 span，
-   * span 的位置即选区首行位置。不引入新依赖，仅标准 DOM 测量。
-   */
-  function selectionViewportPos(ta: HTMLTextAreaElement, start: number): { x: number; y: number } {
-    const taRect = ta.getBoundingClientRect();
-    const cs = window.getComputedStyle(ta);
-    const mirror = document.createElement('div');
-    for (const k of [
-      'fontFamily', 'fontSize', 'fontWeight', 'fontStyle', 'letterSpacing', 'lineHeight',
-      'paddingLeft', 'paddingRight', 'paddingTop', 'paddingBottom',
-      'borderLeftWidth', 'borderRightWidth', 'borderTopWidth', 'borderBottomWidth', 'boxSizing',
-    ] as const) {
-      (mirror.style as unknown as Record<string, string>)[k] = cs[k];
-    }
-    mirror.style.position = 'fixed';
-    mirror.style.left = `${taRect.left}px`;
-    mirror.style.top = `${taRect.top}px`;
-    mirror.style.width = `${ta.clientWidth}px`;
-    mirror.style.height = 'auto';
-    mirror.style.visibility = 'hidden';
-    mirror.style.whiteSpace = 'pre-wrap';
-    mirror.style.overflowWrap = 'break-word';
-    mirror.style.overflow = 'hidden';
-    mirror.textContent = ta.value.slice(0, start);
-    const marker = document.createElement('span');
-    marker.textContent = '\u200b';
-    mirror.appendChild(marker);
-    document.body.appendChild(mirror);
-    const mRect = marker.getBoundingClientRect();
-    mirror.remove();
-    return { x: mRect.left, y: mRect.bottom - ta.scrollTop };
   }
 
   function captureSelection() {

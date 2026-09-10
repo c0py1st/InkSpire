@@ -1,16 +1,49 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useShallow } from 'zustand/react/shallow';
+import type { SearchHit } from '../../../shared/src/types';
+import { api } from '../api/client';
 import { useStore } from '../state/store';
 import { Btn } from './primitives';
 
 export function LeftPanel() {
-  const { bundle, centerView, setView, openChapter, chapter, drawerOpen, setDrawer } =
+  const { bundle, centerView, setView, openChapter, chapter, drawerOpen, setDrawer, slug, jumpTo, toast } =
     useStore(useShallow((s) => ({
       bundle: s.bundle, centerView: s.centerView, setView: s.setView, openChapter: s.openChapter,
       chapter: s.chapter, drawerOpen: s.drawerOpen, setDrawer: s.setDrawer,
+      slug: s.slug, jumpTo: s.jumpTo, toast: s.toast,
     })));
   const [openVols, setOpenVols] = useState<Set<number>>(new Set([0]));
   const [tab, setTab] = useState<'outline' | 'bible'>('outline');
+
+  // 前文检索：300ms 防抖，命中列表替换大纲树显示；点命中行跳进章节并选中命中词
+  const [query, setQuery] = useState('');
+  const [hits, setHits] = useState<SearchHit[] | null>(null);
+
+  // 切换作品时重置搜索：渲染期间比较上一值（与 BibleView 同款模式），避免 effect 级联
+  const [lastSlug, setLastSlug] = useState(slug);
+  if (lastSlug !== slug) {
+    setLastSlug(slug);
+    setHits(null);
+    setQuery('');
+  }
+
+  useEffect(() => {
+    const q = query.trim();
+    if (!q || !slug) return;
+    const t = setTimeout(() => {
+      void (async () => {
+        try {
+          setHits(await api.search(slug, q));
+        } catch (err) {
+          toast(`检索失败：${(err as Error).message}`, 'error');
+          setHits([]);
+        }
+      })();
+    }, 300);
+    return () => clearTimeout(t);
+  }, [query, slug, toast]);
+
+  const searching = hits !== null;
 
   if (!bundle?.outline) {
     return (
@@ -41,11 +74,36 @@ export function LeftPanel() {
         <div className="logline">{bundle.meta.logline}</div>
       </div>
       <div className="left-tabs">
-        <button className={tab === 'outline' ? 'active' : ''} onClick={() => setTab('outline')}>大纲</button>
-        <button className={tab === 'bible' ? 'active' : ''} onClick={() => { setTab('bible'); setView('bible'); }}>设定</button>
+        <button className={tab === 'outline' ? 'active' : ''} onClick={() => { setTab('outline'); setHits(null); }}>大纲</button>
+        <button className={tab === 'bible' ? 'active' : ''} onClick={() => { setTab('bible'); setView('bible'); setHits(null); }}>设定</button>
+        <div style={{ flex: 1 }} />
+        <input
+          type="search"
+          className="tree-search"
+          placeholder="搜前文…"
+          value={query}
+          onChange={(e) => {
+            setQuery(e.target.value);
+            if (!e.target.value.trim()) setHits(null); // 清空输入即退出检索视图
+          }}
+          title="在所有章节正文中查找：某句话、某个伏笔、某个人物"
+        />
       </div>
       <div className="tree">
-        {tab === 'outline' &&
+        {searching ? (
+          hits.length === 0 ? (
+            <div style={{ padding: '10px 14px', color: 'var(--text-faint)', fontSize: 12.5 }}>
+              没有命中的段落。
+            </div>
+          ) : (
+            hits.map((h, i) => (
+              <div key={`${h.chapterId}-${h.offset}-${i}`} className="hit-row" onClick={() => void jumpTo(h.chapterId, h.offset, query.trim())} title="点击跳转并选中">
+                <span className="hit-where">{h.volumeTitle} · {h.chapterTitle}</span>
+                <span className="hit-snip">{h.snippet}</span>
+              </div>
+            ))
+          )
+        ) : tab === 'outline' &&
           bundle.outline.volumes.map((vol, vi) => {
             const open = openVols.has(vi);
             const wc = vol.chapters.reduce((a, c) => a + (bundle.wordCounts[c.id] ?? 0), 0);

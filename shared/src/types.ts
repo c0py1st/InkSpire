@@ -130,6 +130,17 @@ export interface ProposalRequest {
   kind: ProposalKind;
 }
 
+/** 前文检索命中：章节 + 正文内偏移 + 上下文片段 */
+export interface SearchHit {
+  chapterId: string;
+  chapterTitle: string;
+  volumeTitle: string;
+  /** 命中点在章节正文（去 frontmatter）内的偏移，供编辑器定位 */
+  offset: number;
+  /** 带上下文的一行摘录，命中词用〔〕包裹 */
+  snippet: string;
+}
+
 /** 一致性检查的一条问题（severity: high | medium | low） */
 export interface ConsistencyIssue {
   severity: string;

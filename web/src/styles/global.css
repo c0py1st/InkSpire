@@ -341,6 +341,33 @@ textarea { resize: vertical; line-height: 1.6; }
   border-bottom-color: var(--accent);
   font-weight: 600;
 }
+.tree-search {
+  flex: none;
+  width: 104px;
+  align-self: center;
+  margin: 0 10px 0 6px;
+  font: inherit;
+  font-size: 12px;
+  padding: 4px 8px;
+  border: 1px solid var(--line);
+  border-radius: var(--rad);
+  background: var(--panel);
+  color: var(--text);
+}
+.tree-search:focus { outline: none; border-color: var(--line-strong); }
+
+/* 前文检索命中行 */
+.hit-row {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 7px 14px;
+  cursor: pointer;
+  border-left: 2px solid transparent;
+}
+.hit-row:hover { background: var(--hover); border-left-color: var(--accent-focus); }
+.hit-where { font-size: 11px; color: var(--text-faint); }
+.hit-snip { font-size: 12.3px; line-height: 1.55; color: var(--text-dim); word-break: break-all; }
 
 .tree {
   flex: 1;
