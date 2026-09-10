@@ -49,6 +49,24 @@ export function buildSummariesText(
   return lines.join('\n');
 }
 
+/** 按大纲顺序展开全部章节 id（卷序 + 卷内序） */
+export function flattenChapterIds(outline: Outline): string[] {
+  const ids: string[] = [];
+  for (const vol of outline.volumes) for (const ch of vol.chapters) ids.push(ch.id);
+  return ids;
+}
+
+/**
+ * 从 fromId（含）开始按阅读顺序取最多 count 个章节 id；跨卷自然衔接。
+ * fromId 不在大纲中时抛错（复用 locateChapter 的报错语义）。
+ */
+export function nextChapterIds(outline: Outline, fromId: string, count: number): string[] {
+  const all = flattenChapterIds(outline);
+  const at = all.indexOf(fromId);
+  if (at < 0) throw new Error(`大纲中找不到章节 ${fromId}`);
+  return all.slice(at, at + Math.max(1, count));
+}
+
 export function buildChapterContext(args: {
   outline: Outline;
   chapterId: string;

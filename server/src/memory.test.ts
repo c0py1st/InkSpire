@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Outline } from '../../shared/src/types';
-import { buildSummariesText, locateChapter } from './ai/memory';
+import { buildSummariesText, flattenChapterIds, locateChapter, nextChapterIds } from './ai/memory';
 
 function outline(): Outline {
   const chapters = (prefix: string, n: number) =>
@@ -48,5 +48,29 @@ describe('buildSummariesText', () => {
     const text = buildSummariesText(o, { v01c001: '一', v01c002: '二' }, 'v01c003');
     expect(text).toContain('一');
     expect(text).toContain('二');
+  });
+});
+
+describe('flattenChapterIds', () => {
+  it('卷序+卷内序展开全部章 id', () => {
+    expect(flattenChapterIds(outline())).toEqual([
+      'v01c001', 'v01c002', 'v01c003', 'v02c001', 'v02c002',
+    ]);
+  });
+});
+
+describe('nextChapterIds', () => {
+  it('含起点，跨卷衔接', () => {
+    expect(nextChapterIds(outline(), 'v01c002', 4)).toEqual([
+      'v01c002', 'v01c003', 'v02c001', 'v02c002',
+    ]);
+  });
+
+  it('末尾不足 count 时返回剩余', () => {
+    expect(nextChapterIds(outline(), 'v02c002', 5)).toEqual(['v02c002']);
+  });
+
+  it('起点不在大纲时抛错', () => {
+    expect(() => nextChapterIds(outline(), 'v09c001', 3)).toThrow();
   });
 });
