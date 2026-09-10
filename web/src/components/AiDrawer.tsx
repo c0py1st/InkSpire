@@ -11,6 +11,7 @@ interface Proposal {
   id: number;
   kind: ProposalKind;
   instruction: string;
+  label?: string;          // 卡片标题（迭代版显示"…·迭代"）
   original: string;
   range: { start: number; end: number };
   text: string;
@@ -73,14 +74,18 @@ export function AiDrawer() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pendingProposal?.nonce]);
 
-  async function runProposal(start: number, end: number, original: string, kind: ProposalKind, instruction: string) {
+  async function runProposal(
+    start: number, end: number, original: string, kind: ProposalKind, instruction: string,
+    prevText?: string,
+  ) {
     if (!slug || !chapter) return;
     const id = propSeq++;
-    const proposal: Proposal = { id, kind, instruction, original, range: { start, end }, text: '', streaming: true };
+    const label = prevText ? `${PROPOSAL_LABELS[kind]}·迭代` : PROPOSAL_LABELS[kind];
+    const proposal: Proposal = { id, kind, instruction, label, original, range: { start, end }, text: '', streaming: true };
     setProposals((ps) => [proposal, ...ps]);
     try {
       await api.propose(slug, {
-        chapterId: chapter.id, start, end, original, instruction, kind,
+        chapterId: chapter.id, start, end, original, instruction, kind, prevText,
       }, (delta) => {
         setProposals((ps) => ps.map((p) => (p.id === id ? { ...p, text: p.text + delta } : p)));
       });
@@ -212,7 +217,7 @@ export function AiDrawer() {
             {proposals.map((p) => (
               <div key={p.id} className="proposal">
                 <div className="p-head">
-                  <span className="kind">{PROPOSAL_LABELS[p.kind]}</span>
+                  <span className="kind">{p.label ?? PROPOSAL_LABELS[p.kind]}</span>
                   <span className="p-instr">{p.instruction ? `“${p.instruction}”` : ''}</span>
                   <div style={{ flex: 1 }} />
                   {p.streaming && <span style={{ color: 'var(--warn)', fontSize: 11 }}>生成中…</span>}
@@ -228,7 +233,11 @@ export function AiDrawer() {
                 {!p.streaming && !p.error && (
                   <div className="p-actions">
                     <Btn small primary onClick={() => void acceptProposal(p)}>采纳</Btn>
-                    <Btn small onClick={() => void runProposal(p.range.start, p.range.end, p.original, p.kind, p.instruction)}>再来一版</Btn>
+                    <Btn small onClick={() => {
+                      const fb = window.prompt('对这一版哪里不满意？（会基于这一版定向改，不推倒重来）');
+                      if (fb !== null) void runProposal(p.range.start, p.range.end, p.original, p.kind, fb.trim() || '更好一些', p.text);
+                    }} title="在上一版基础上，按你的反馈定向修改">按反馈再改</Btn>
+                    <Btn small onClick={() => void runProposal(p.range.start, p.range.end, p.original, p.kind, p.instruction)}>推倒重来</Btn>
                     <div style={{ flex: 1 }} />
                     <Btn small ghost onClick={() => setProposals((ps) => ps.filter((x) => x.id !== p.id))}>放弃</Btn>
                   </div>

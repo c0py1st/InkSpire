@@ -129,6 +129,8 @@ export interface ProposalRequest {
   original: string;
   instruction: string;
   kind: ProposalKind;
+  /** 迭代改写：上一版提案文本 + 针对它的新反馈，一起回传给模型定向改进 */
+  prevText?: string;
 }
 
 /** 前文检索命中：章节 + 正文内偏移 + 上下文片段 */

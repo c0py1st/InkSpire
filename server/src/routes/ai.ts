@@ -522,9 +522,11 @@ aiRouter.post('/projects/:slug/propose', (req, res) => {
     original,
     kind: body.kind,
     instruction: body.instruction,
+    prevText: body.prevText,
   });
 
-  // 按任务的发散度定温度：保语义任务低温求稳，求变化任务略高但不放纵
+  // 按任务的发散度定温度：保语义任务低温求稳，求变化任务略高但不放纵；
+  // 迭代改写在上版基础上定向修改，取更稳的 0.7
   const kindTemperature: Record<string, number> = {
     polish: 0.7, condense: 0.7, expand: 0.95, rewrite: 1.0, custom: 0.9,
   };
@@ -533,7 +535,7 @@ aiRouter.post('/projects/:slug/propose', (req, res) => {
     await streamToTask(sse, signal, profile, cfg, [
       { role: 'system', content: prompt.system },
       { role: 'user', content: prompt.user },
-    ], 'prose', undefined, kindTemperature[body.kind] ?? 0.9);
+    ], 'prose', undefined, body.prevText ? 0.7 : (kindTemperature[body.kind] ?? 0.9));
   });
 });
 
