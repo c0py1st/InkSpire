@@ -919,6 +919,22 @@ textarea { resize: vertical; line-height: 1.6; }
   transform: translate(-50%, -48.5%);
 }
 
+/* 悬浮模式：贴右上、不遮页面（一致性检查结果）。非模态下照常可交互正文 */
+.bu-popup.floating {
+  top: calc(var(--topbar-h) + 10px);
+  left: auto;
+  right: 12px;
+  transform: none;
+  width: min(460px, 94vw);
+  max-height: calc(100vh - var(--topbar-h) - 24px);
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.28);
+}
+.bu-popup.floating[data-starting-style],
+.bu-popup.floating[data-closed] {
+  opacity: 0;
+  transform: translateY(-6px);
+}
+
 .modal {
   background: var(--panel);
   border: 1px solid var(--line-strong);

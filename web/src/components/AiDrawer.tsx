@@ -311,7 +311,7 @@ export function AiDrawer() {
       </aside>
 
       {issuesOpen && (
-        <BuDialog open onClose={() => setIssuesOpen(false)} closeOnOutsidePress ariaTitle={`一致性检查 · ${issuesChapter}`} size="narrow">
+        <BuDialog open onClose={() => setIssuesOpen(false)} floating ariaTitle={`一致性检查 · ${issuesChapter}`}>
           <div className="m-head">
             一致性检查结果
             {issuesChapter && <span className="sub" style={{ fontWeight: 400, marginLeft: 8 }}>《{issuesChapter}》</span>}

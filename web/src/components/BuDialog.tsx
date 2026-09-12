@@ -22,6 +22,8 @@ export function BuDialog(props: {
   size?: 'default' | 'narrow' | 'wide';
   /** 是否允许点击遮罩关闭（默认否，与旧版多数弹窗一致） */
   closeOnOutsidePress?: boolean;
+  /** 悬浮模式：非模态、无遮罩、不锁滚动，页面其余部分照常可交互（一致性检查结果用） */
+  floating?: boolean;
   children: ReactNode;
 }) {
   const sizeClass = props.size === 'narrow' ? 'modal narrow' : props.size === 'wide' ? 'modal settings-modal' : 'modal';
@@ -31,11 +33,12 @@ export function BuDialog(props: {
       onOpenChange={(open, details) => {
         if (!open) props.onClose(details.reason);
       }}
-      disablePointerDismissal={!props.closeOnOutsidePress}
+      modal={props.floating ? false : true}
+      disablePointerDismissal={props.floating ? true : !props.closeOnOutsidePress}
     >
       <Dialog.Portal>
-        <Dialog.Backdrop className="bu-backdrop" />
-        <Dialog.Popup className={`bu-popup ${sizeClass}`}>
+        {!props.floating && <Dialog.Backdrop className="bu-backdrop" />}
+        <Dialog.Popup className={`bu-popup ${sizeClass}${props.floating ? ' floating' : ''}`}>
           <Dialog.Title className="sr-only">{props.ariaTitle}</Dialog.Title>
           {props.children}
         </Dialog.Popup>
