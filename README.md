@@ -106,3 +106,7 @@ shared/   前后端共享类型
 - [Base UI](https://base-ui.com)（MIT）——所有弹窗（设置、开书向导、历史版本、确认框）的行为层使用其无头 `Dialog` 组件（npm 依赖 `@base-ui-components/react`，提供 Escape/焦点圈定/ARIA/滚动锁定）；视觉样式全部仍由本项目手写 CSS 完成。
 
 另有随包分发的正文字体 [霞鹜文楷屏幕版 lxgw-wenkai-screen-webfont](https://github.com/lxgw/LxgwWenKai-Screen)（SIL OFL 1.1，npm 依赖），保证稿纸区字体离线统一。
+
+## 许可证
+
+本项目代码以 [MIT](LICENSE) 发布（Copyright © 2026 c0py1st）。上游依赖与字体的许可要求已在「致谢与第三方」中注明。
