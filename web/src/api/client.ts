@@ -99,6 +99,7 @@ export const api = {
   completeProject: (payload: { meta: { title: string; logline: string; wordsPerChapter?: number }; outline: Outline; characters: CharacterCard[]; worldview: string }) =>
     post<ProjectMeta>('/api/projects/complete', payload),
   deleteProject: (slug: string) => del<{ ok: true }>(`/api/projects/${slug}`),
+  backupUrl: (slug: string) => `/api/projects/${slug}/backup`,
 
   getBundle: (slug: string) => get<Bundle & { wordCounts: Record<string, number> }>(`/api/projects/${slug}/bundle`),
   search: (slug: string, q: string) =>

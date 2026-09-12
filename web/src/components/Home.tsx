@@ -44,8 +44,21 @@ export function Home() {
             <div className="b-meta">
               <div>更新于 {new Date(p.updatedAt).toLocaleDateString('zh-CN')}</div>
               <button
+                className="icon-btn"
+                title="整本打包下载 tar.gz（含历史版本，不含密钥），可解压回 data/ 恢复"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  const a = document.createElement('a');
+                  a.href = api.backupUrl(p.slug);
+                  a.download = '';
+                  document.body.appendChild(a);
+                  a.click();
+                  a.remove();
+                }}
+              >备份</button>
+              <button
                 className="icon-btn danger"
-                title="删除本书（磁盘文件一并删除）"
+                title="删除本书（移入回收站，30 天后才真正清除）"
                 onClick={(e) => {
                   e.stopPropagation();
                   setConfirmSlug(p.slug);
@@ -63,7 +76,7 @@ export function Home() {
               try {
                 await api.deleteProject(confirmSlug);
                 await loadProjects();
-                toast('已删除', 'ok');
+                toast('已移入回收站（30 天内可在 data/.trash 找回）', 'ok');
               } catch (err) {
                 toast((err as Error).message, 'error');
               }
@@ -82,7 +95,8 @@ function ConfirmDelete(props: { slug: string; onCancel: () => void; onDone: () =
     <BuDialog open onClose={props.onCancel} closeOnOutsidePress ariaTitle="删除作品" size="narrow">
         <div className="m-head">删除作品</div>
         <div className="m-body" style={{ fontSize: 13 }}>
-          将删除 <b>{props.slug}</b> 的全部磁盘文件（正文、大纲、设定），且无法恢复。确定吗？
+          将把 <b>{props.slug}</b> 移入回收站（data/.trash/），30 天后自动清除。
+          在此期间可随时手动恢复。确定吗？
         </div>
         <div className="m-foot">
           <div className="spacer" />

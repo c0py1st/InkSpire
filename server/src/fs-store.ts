@@ -137,12 +137,38 @@ export function saveProjectBundle(
   return meta;
 }
 
+/**
+ * 删除 = 移入 data/.trash/<时间戳>_<slug>，不是真删。
+ * 本地工具不可逆删除太危险；.trash 在 DATA_DIR 根部，listProjects
+ * 只认"含 meta.json 的目录"所以不会把回收站当书列出。
+ */
 export function deleteProject(slug: string): void {
   const dir = projectDir(slug);
   if (!fs.existsSync(dir) || !fs.existsSync(path.join(dir, 'meta.json'))) {
     throw new Error('项目不存在');
   }
-  fs.rmSync(dir, { recursive: true, force: true });
+  const trash = path.join(DATA_DIR, '.trash');
+  fs.mkdirSync(trash, { recursive: true });
+  const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+  fs.renameSync(dir, path.join(trash, `${stamp}_${slug}`));
+}
+
+/** 启动时清理回收站里超过保留期的旧书（30 天）；失败静默跳过 */
+export function purgeTrash(days: number = 30): void {
+  const trash = path.join(DATA_DIR, '.trash');
+  if (!fs.existsSync(trash)) return;
+  const cutoff = Date.now() - days * 24 * 3600 * 1000;
+  for (const name of fs.readdirSync(trash)) {
+    try {
+      const full = path.join(trash, name);
+      // 删除时间取目录名前缀时间戳（刚写入 .trash 的目录 mtime 未必刷新）；
+      // 名字解析不出时退回 mtime
+      const m = name.match(/^(\d{4}-\d{2}-\d{2})T(\d{2})-(\d{2})-(\d{2})-(\d{3})Z_/);
+      const deletedAt = m ? Date.parse(`${m[1]}T${m[2]}:${m[3]}:${m[4]}.${m[5]}Z`) : NaN;
+      const when = Number.isFinite(deletedAt) ? deletedAt : fs.statSync(full).mtimeMs;
+      if (when < cutoff) fs.rmSync(full, { recursive: true, force: true });
+    } catch { /* 忽略 */ }
+  }
 }
 
 export function getMeta(slug: string): ProjectMeta {

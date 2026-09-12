@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { ChapterFile, CharacterCard, Outline } from '../../../shared/src/types';
 import { chapterId as mkChapterId, countChars, volumeId } from '../../../shared/src/util';
+import { buildBookArchive } from '../backup';
 import {
   createProject, deleteProject, getMeta, listChapters, listProjects, loadOutline, saveProjectBundle,
 } from '../fs-store';
@@ -56,6 +57,18 @@ projectsRouter.delete('/:slug', (req, res) => {
   try {
     deleteProject(req.params.slug);
     res.json({ ok: true });
+  } catch (err) {
+    res.status(400).json({ error: (err as Error).message });
+  }
+});
+
+/** 整本备份：目录树打包 tar.gz 下载（含历史版本，不含密钥） */
+projectsRouter.get('/:slug/backup', (req, res) => {
+  try {
+    const { buffer, filename } = buildBookArchive(req.params.slug);
+    res.setHeader('Content-Type', 'application/gzip');
+    res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${encodeURIComponent(filename)}`);
+    res.send(buffer);
   } catch (err) {
     res.status(400).json({ error: (err as Error).message });
   }
