@@ -7,7 +7,7 @@ import { loadConfig } from '../config';
 import { chatOnce, streamChat } from '../ai/provider';
 import { extractJson } from '../ai/json';
 import { Sse, abortOnClose } from '../ai/sse';
-import { buildChapterContext, buildSummariesText, locateChapter, nextChapterIds, selectionContext } from '../ai/memory';
+import { buildChapterContext, buildSummariesText, foreshadowText, locateChapter, nextChapterIds, selectionContext } from '../ai/memory';
 import { kernelPrompt } from '../ai/prompts/kernel';
 import { volumesPrompt } from '../ai/prompts/volumes';
 import { beatsPrompt } from '../ai/prompts/beats';
@@ -240,6 +240,7 @@ async function runOneChapter(task: BgGenTask, item: QueueItem): Promise<ChapterR
       worldview: bundle.worldview,
       summaries: bundle.summaries,
       prevChapterContent: prevContent,
+      foreshadows: bundle.foreshadows,
     });
 
     const targetWords = getMeta(slug).wordsPerChapter ?? undefined;
@@ -616,6 +617,12 @@ aiRouter.post('/projects/:slug/chat', (req, res) => {
     worldview: bundle.worldview,
     characters: charsText,
     summaries: outline ? buildSummariesText(outline, bundle.summaries, chapterId ?? '') : '',
+    foreshadows: outline
+      ? (chapterId
+        ? foreshadowText(outline, bundle.foreshadows, chapterId)
+        : bundle.foreshadows.filter((f) => f.status === 'open')
+          .map((f) => `- 未回收：${f.content}（埋设于 ${f.setupChapterId}）`).join('\n'))
+      : '',
     chapterTitle,
     chapterBeat,
     chapterContent,
@@ -694,6 +701,7 @@ aiRouter.post('/projects/:slug/check-consistency/:chapterId', async (req, res) =
       characters: bundle.characters,
       summaries: buildSummariesText(outline, bundle.summaries, chapterId),
       worldview: bundle.worldview,
+      foreshadows: foreshadowText(outline, bundle.foreshadows, chapterId),
     });
     const raw = await chatOnce(cfg, assistProfile(cfg), [
       { role: 'system', content: prompt.system },

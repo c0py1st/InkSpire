@@ -7,6 +7,7 @@ export function chatPrompt(args: {
   worldview: string;
   characters: string;     // 已格式化的人物卡区块
   summaries: string;      // 前情摘要
+  foreshadows?: string;   // 伏笔登记表文本
   chapterTitle?: string;
   chapterBeat?: string;
   chapterContent?: string;
@@ -29,7 +30,8 @@ ${storyBibleSection({
   worldview: args.worldview,
 })}
 ${args.characters ? `\n${args.characters}` : ''}
-${args.summaries ? `\n【前情摘要】\n${args.summaries}` : ''}`,
+${args.summaries ? `\n【前情摘要】\n${args.summaries}` : ''}
+${args.foreshadows ? `\n【伏笔登记表（未回收的伏笔清单，回答涉及剧情规划时参考）】\n${args.foreshadows}` : ''}`,
     user: `${args.chapterTitle ? `当前正在编辑：《${args.chapterTitle}》` : ''}${
       args.chapterBeat ? `（本章大纲：${args.chapterBeat}）` : ''
     }

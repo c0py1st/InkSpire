@@ -6,6 +6,7 @@ import { api } from '../api/client';
 import { useStore } from '../state/store';
 import { BuDialog } from './BuDialog';
 import { Btn, Field } from './primitives';
+import { ForeshadowPanel } from './ForeshadowPanel';
 
 export function OutlineView() {
   const { bundle, persistOutline, updateOutlineLocal, toast, openChapter, setView, reloadBundle } =
@@ -227,6 +228,8 @@ export function OutlineView() {
         <Btn ghost onClick={() => mutateVolumes((vs) => [...vs, { id: `v${String(vs.length + 1).padStart(2, '0')}`, title: `新卷 ${vs.length + 1}`, summary: '', chapters: [] }])}>
           ＋ 加一卷
         </Btn>
+        <div style={{ height: 24 }} />
+        <ForeshadowPanel />
         <div style={{ height: 60 }} />
         <div style={{ display: 'flex', gap: 10, marginTop: 8 }}>
           <Btn onClick={() => setView('bible')}>去编辑设定集 →</Btn>

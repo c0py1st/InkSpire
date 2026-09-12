@@ -1,5 +1,5 @@
 import type {
-  ChapterBeat, CharacterCard, Outline,
+  ChapterBeat, CharacterCard, Foreshadow, Outline,
 } from '../../../shared/src/types';
 import type { ChapterContext } from './prompts/prose';
 
@@ -78,6 +78,7 @@ export function buildChapterContext(args: {
   worldview: string;
   summaries: Record<string, string>;
   prevChapterContent?: string;   // 前一章全文（这里只取结尾）
+  foreshadows?: Foreshadow[];    // 伏笔登记表
   currentVolumeOnlyCast?: boolean;
 }): ChapterContext {
   const { outline, chapterId, characters } = args;
@@ -105,9 +106,42 @@ export function buildChapterContext(args: {
     volumeSummary: vol.summary,
     prevTail,
     summaries: buildSummariesText(outline, args.summaries, chapterId),
+    foreshadow: foreshadowText(outline, args.foreshadows ?? [], chapterId),
     cast,
     mentionOnly: mentionOnlyAll,
   };
+}
+
+/**
+ * 生成章节时注入的伏笔备忘：
+ * 埋设章已在本章之前的未回收伏笔 + 指定本章回收的伏笔。
+ */
+export function foreshadowText(outline: Outline, items: Foreshadow[], chapterId: string): string {
+  if (!items.length) return '';
+  const order = flattenChapterIds(outline);
+  const at = order.indexOf(chapterId);
+  if (at < 0) return '';
+  const titleOf = (cid: string) => {
+    for (const v of outline.volumes) {
+      const c = v.chapters.find((x) => x.id === cid);
+      if (c) return `《${c.title}》(${cid})`;
+    }
+    return `(${cid})`;
+  };
+  const dueLines: string[] = [];
+  const openLines: string[] = [];
+  for (const f of items) {
+    if (f.status === 'abandoned') continue;
+    const dueHere = f.status === 'open' && f.payoffChapterId === chapterId;
+    const buried = order.indexOf(f.setupChapterId);
+    const openBefore = f.status === 'open' && buried >= 0 && buried <= at && f.setupChapterId !== chapterId;
+    if (dueHere) dueLines.push(`- 本章必须回收：${f.content}（埋设于${titleOf(f.setupChapterId)}）`);
+    else if (openBefore) {
+      const plan = f.payoffChapterId ? `，计划回收于${titleOf(f.payoffChapterId)}` : '，回收章未定';
+      openLines.push(`- 仍未回收（可推进线索，不要遗忘）：${f.content}（埋设于${titleOf(f.setupChapterId)}${plan}）`);
+    }
+  }
+  return [...dueLines, ...openLines].join('\n');
 }
 
 /** 供改写/问答用的轻量上下文 */

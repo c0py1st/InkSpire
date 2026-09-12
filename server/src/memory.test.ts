@@ -1,6 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import type { Outline } from '../../shared/src/types';
-import { buildSummariesText, flattenChapterIds, locateChapter, nextChapterIds } from './ai/memory';
+import type { Foreshadow, Outline } from '../../shared/src/types';
+import { buildSummariesText, flattenChapterIds, foreshadowText, locateChapter, nextChapterIds } from './ai/memory';
+
+function fs_(over: Partial<Foreshadow>): Foreshadow {
+  return {
+    id: 'f1', setupChapterId: 'v01c001', content: '铜牌来历',
+    status: 'open', createdAt: '', ...over,
+  };
+}
 
 function outline(): Outline {
   const chapters = (prefix: string, n: number) =>
@@ -90,5 +97,42 @@ describe('nextChapterIds', () => {
 
   it('起点不在大纲时抛错', () => {
     expect(() => nextChapterIds(outline(), 'v09c001', 3)).toThrow();
+  });
+});
+
+describe('foreshadowText', () => {
+  const o = outline();
+
+  it('埋设章在本章之前的未收伏笔要列出，之后埋的不列', () => {
+    const items = [
+      fs_({ id: 'a', setupChapterId: 'v01c001', content: '甲牌' }),
+      fs_({ id: 'b', setupChapterId: 'v02c002', content: '乙线' }),
+    ];
+    const text = foreshadowText(o, items, 'v01c002');
+    expect(text).toContain('甲牌');
+    expect(text).not.toContain('乙线');
+  });
+
+  it('指定本章回收的伏笔以"必须回收"呈现且排在前面', () => {
+    const items = [
+      fs_({ id: 'a', setupChapterId: 'v01c001', content: '普通线' }),
+      fs_({ id: 'b', setupChapterId: 'v01c001', payoffChapterId: 'v01c002', content: '该收了' }),
+    ];
+    const text = foreshadowText(o, items, 'v01c002');
+    expect(text).toContain('本章必须回收：该收了');
+    expect(text.indexOf('该收了')).toBeLessThan(text.indexOf('普通线'));
+  });
+
+  it('已回收/废弃不再出现', () => {
+    const items = [
+      fs_({ id: 'a', content: '收了', status: 'resolved' }),
+      fs_({ id: 'b', content: '扔了', status: 'abandoned' }),
+    ];
+    const text = foreshadowText(o, items, 'v02c001');
+    expect(text).toBe('');
+  });
+
+  it('空表返回空串', () => {
+    expect(foreshadowText(o, [], 'v01c001')).toBe('');
   });
 });

@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import YAML from 'yaml';
 import {
-  Bundle, ChapterFile, ChapterStatus, CharacterCard, Outline, ProjectMeta,
+  Bundle, ChapterFile, ChapterStatus, CharacterCard, Foreshadow, Outline, ProjectMeta,
   Suggestion,
 } from '../../shared/src/types';
 import { countChars } from '../../shared/src/util';
@@ -205,6 +205,14 @@ export function loadSuggestions(slug: string): Suggestion[] {
   return readJson<Suggestion[]>(jfile(slug, 'suggestions.json'), []);
 }
 
+export function loadForeshadows(slug: string): Foreshadow[] {
+  return readJson<Foreshadow[]>(jfile(slug, 'foreshadows.json'), []);
+}
+
+export function saveForeshadows(slug: string, items: Foreshadow[]): void {
+  writeJson(jfile(slug, 'foreshadows.json'), items);
+}
+
 export function loadBundle(slug: string): Bundle {
   getMeta(slug); // 校验存在
   return {
@@ -214,6 +222,7 @@ export function loadBundle(slug: string): Bundle {
     worldview: loadWorldview(slug),
     summaries: loadSummaries(slug),
     suggestions: loadSuggestions(slug),
+    foreshadows: loadForeshadows(slug),
   };
 }
 

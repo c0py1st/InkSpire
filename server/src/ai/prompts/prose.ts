@@ -10,6 +10,7 @@ export interface ChapterContext {
   volumeTitle: string;
   prevTail: string;              // 前一章结尾原文（约 1500 字）
   summaries: string;             // 全部前文滚动摘要
+  foreshadow?: string;           // 伏笔备忘（已埋未收 + 本章应收）
   cast: CharacterCard[];         // 出场人物完整卡片
   mentionOnly: CharacterCard[];  // 其他主要人物一句话版
 }
@@ -32,6 +33,7 @@ ${[
   `文风约定（必须遵守）：${o.styleGuide}`,
   `本卷《${ctx.volumeTitle}》剧情弧：${ctx.volumeSummary}`,
   ctx.summaries ? `【前情摘要】\n${ctx.summaries}` : '【前情摘要】这是全书第一章。',
+  ctx.foreshadow ? `【伏笔登记表（写作纪律，必须遵守）】\n${ctx.foreshadow}` : '',
   ctx.prevTail ? `【上一章结尾原文】（承接其场景、语气与未收的钩子）\n…${ctx.prevTail}` : '',
   ctx.cast.length
     ? `【本章出场人物卡】\n${ctx.cast

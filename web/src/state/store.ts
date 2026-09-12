@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import type {
-  AppConfig, Bundle, ChapterStatus, CharacterCard, GenChapterResult, Outline, ProjectMeta, ProposalKind,
+  AppConfig, Bundle, ChapterStatus, CharacterCard, Foreshadow, GenChapterResult, Outline, ProjectMeta, ProposalKind,
 } from '../../../shared/src/types';
 import { atParagraphStart, ensureParagraphIndent } from '../../../shared/src/util';
 import { api } from '../api/client';
@@ -114,6 +114,8 @@ interface Store {
   persistOutline: (outline: Outline) => Promise<void>;
   persistCharacters: (chars: CharacterCard[]) => Promise<void>;
   persistWorldview: (text: string) => Promise<void>;
+  persistForeshadows: (items: Foreshadow[]) => Promise<void>;
+  updateForeshadowsLocal: (items: Foreshadow[]) => void;
 
   acceptSuggestion: (id: string) => Promise<void>;
   dismissSuggestion: (id: string) => Promise<void>;
@@ -547,6 +549,24 @@ export const useStore = create<Store>((set, get) => ({
     if (!slug || !bundle) return;
     set({ bundle: { ...bundle, worldview: text } });
     await api.saveWorldview(slug, text);
+  },
+
+  async persistForeshadows(items) {
+    const { slug, bundle } = get();
+    if (!slug || !bundle) return;
+    set({ bundle: { ...bundle, foreshadows: items } });
+    try {
+      await api.saveForeshadows(slug, items);
+    } catch (err) {
+      get().toast(`保存伏笔表失败：${(err as Error).message}`, 'error');
+    }
+  },
+
+  /** 只改内存（打字过程中用），失焦时再 persistForeshadows 落盘 */
+  updateForeshadowsLocal(items) {
+    const bundle = get().bundle;
+    if (!bundle) return;
+    set({ bundle: { ...bundle, foreshadows: items } });
   },
 
   async acceptSuggestion(id) {

@@ -68,6 +68,16 @@ export interface Suggestion {
   createdAt: string;
 }
 
+/** 伏笔登记：埋设章 -> 内容 -> 计划回收章 -> 状态。生成与检查时按章注入 */
+export interface Foreshadow {
+  id: string;
+  setupChapterId: string;    // 埋设（或揭示线索）的章
+  content: string;           // 伏笔内容一句话
+  payoffChapterId?: string;  // 计划回收的章（可留空=未定）
+  status: 'open' | 'resolved' | 'abandoned';
+  createdAt: string;
+}
+
 /** 创作向导中间产物 */
 export interface Kernel {
   premise: string;
@@ -108,6 +118,7 @@ export interface Bundle {
   worldview: string;
   summaries: Record<string, string>;   // chapterId -> 摘要
   suggestions: Suggestion[];
+  foreshadows: Foreshadow[];
 }
 
 export interface ChapterFile {

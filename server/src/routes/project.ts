@@ -1,11 +1,11 @@
 import { Router } from 'express';
 import {
-  ChapterFile, CharacterCard, Outline, SearchHit,
+  ChapterFile, CharacterCard, Foreshadow, Outline, SearchHit,
 } from '../../../shared/src/types';
 import { countChars } from '../../../shared/src/util';
 import {
-  listChapterBackups, listChapters, loadBundle, loadOutline, readChapter, readChapterBackup, saveCharacters,
-  saveChapterBody, saveOutline, saveSuggestions, saveWorldview,
+  listChapterBackups, listChapters, loadBundle, loadForeshadows, loadOutline, readChapter, readChapterBackup,
+  saveCharacters, saveChapterBody, saveOutline, saveForeshadows, saveSuggestions, saveWorldview,
 } from '../fs-store';
 
 export const projectRouter = Router();
@@ -115,6 +115,41 @@ projectRouter.put('/:slug/outline', (req, res) => {
     if (!outline || !Array.isArray(outline.volumes)) throw new Error('outline 结构不合法');
     saveOutline(req.params.slug, outline);
     res.json({ ok: true });
+  } catch (err) {
+    res.status(400).json({ error: (err as Error).message });
+  }
+});
+
+/** 只保留字段完整的条目，脏数据不进盘 */
+export function sanitizeForeshadows(body: unknown): Foreshadow[] {
+  if (!Array.isArray(body)) return [];
+  return body
+    .filter((f): f is Foreshadow => !!f && typeof f.id === 'string' && typeof f.content === 'string'
+      && typeof f.setupChapterId === 'string'
+      && (f.status === 'open' || f.status === 'resolved' || f.status === 'abandoned'))
+    .map((f) => ({
+      id: f.id,
+      setupChapterId: f.setupChapterId,
+      content: f.content,
+      ...(f.payoffChapterId ? { payoffChapterId: f.payoffChapterId } : {}),
+      status: f.status,
+      createdAt: typeof f.createdAt === 'string' ? f.createdAt : new Date().toISOString(),
+    }));
+}
+
+projectRouter.get('/:slug/foreshadows', (req, res) => {
+  try {
+    res.json(loadForeshadows(req.params.slug));
+  } catch (err) {
+    res.status(404).json({ error: (err as Error).message });
+  }
+});
+
+projectRouter.put('/:slug/foreshadows', (req, res) => {
+  try {
+    const items = sanitizeForeshadows(req.body);
+    saveForeshadows(req.params.slug, items);
+    res.json({ ok: true, count: items.length });
   } catch (err) {
     res.status(400).json({ error: (err as Error).message });
   }

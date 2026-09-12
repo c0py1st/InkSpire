@@ -9,6 +9,7 @@ export function consistencyPrompt(args: {
   characters: CharacterCard[];
   summaries: string;
   worldview: string;
+  foreshadows?: string;
 }): { system: string; user: string } {
   return {
     system: ASSISTANT_BASE,
@@ -24,11 +25,11 @@ ${args.worldview || '（空）'}
 
 【前情摘要】
 ${args.summaries || '（无）'}
-
+${args.foreshadows ? `\n【伏笔登记表】\n${args.foreshadows}\n` : ''}
 【本章正文】
 ${args.content}
 
-逐项检查：1) 人物性格/口癖/状态是否与卡片矛盾；2) 是否与前情摘要的时间线、事实冲突；3) 是否使用了与世界观不符的器物/制度/称谓；4) 是否偏离本章大纲要求。
+逐项检查：1) 人物性格/口癖/状态是否与卡片矛盾；2) 是否与前情摘要的时间线、事实冲突；3) 是否使用了与世界观不符的器物/制度/称谓；4) 是否偏离本章大纲要求；5) 登记表中标注「本章应回收」的伏笔是否在本章兑现、是否把「仍未回收」的伏笔提前剧透说破。
 
 输出 JSON（${JSON_ONLY}）：
 { "issues": [ { "severity": "high|medium|low", "quote": "正文中的问题原句（截取不超过 40 字）", "description": "问题说明" } ] }

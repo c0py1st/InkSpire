@@ -1,6 +1,6 @@
 /** 与后端的全部交互。SSE 统一走 sse()。 */
 import type {
-  AppConfig, Bundle, ChapterFile, ChapterStatus, CharacterCard, ConsistencyIssue, GenChapterResult, Kernel, Outline, ProjectMeta, ProposalRequest, SearchHit, Suggestion, Volume, VolumeBrief,
+  AppConfig, Bundle, ChapterFile, ChapterStatus, CharacterCard, ConsistencyIssue, Foreshadow, GenChapterResult, Kernel, Outline, ProjectMeta, ProposalRequest, SearchHit, Suggestion, Volume, VolumeBrief,
 } from '../../../shared/src/types';
 
 async function json<T>(res: Response): Promise<T> {
@@ -112,6 +112,8 @@ export const api = {
   getBackup: (slug: string, id: string, stamp: string) =>
     get<ChapterFile>(`/api/projects/${slug}/chapter/${id}/backups/${encodeURIComponent(stamp)}`),
   saveOutline: (slug: string, outline: Outline) => put<{ ok: true }>(`/api/projects/${slug}/outline`, outline),
+  saveForeshadows: (slug: string, items: Foreshadow[]) =>
+    put<{ ok: true; count: number }>(`/api/projects/${slug}/foreshadows`, items),
   saveCharacters: (slug: string, chars: CharacterCard[]) => put<{ ok: true }>(`/api/projects/${slug}/characters`, chars),
   saveWorldview: (slug: string, text: string) => put<{ ok: true }>(`/api/projects/${slug}/worldview`, { text }),
 

@@ -43,7 +43,7 @@ projectsRouter.post('/complete', (req, res) => {
       }
     }
     const meta = saveProjectBundle(
-      { outline: body.outline, characters: body.characters ?? [], worldview: body.worldview ?? '', summaries: {}, suggestions: [] },
+      { outline: body.outline, characters: body.characters ?? [], worldview: body.worldview ?? '', summaries: {}, suggestions: [], foreshadows: [] },
       { title: body.meta.title, logline: body.meta.logline ?? '', wordsPerChapter: body.meta.wordsPerChapter },
       chapters,
     );

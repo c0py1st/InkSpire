@@ -490,6 +490,37 @@ textarea { resize: vertical; line-height: 1.6; }
   background: var(--panel);
 }
 
+/* ---------------- 伏笔登记表 ---------------- */
+.fs-panel {
+  border: 1px solid var(--line);
+  border-radius: var(--rad);
+  background: var(--panel);
+  padding: 12px 14px 14px;
+}
+.fs-title {
+  font-size: 13.5px;
+  font-weight: 700;
+  margin-bottom: 4px;
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
+.fs-count { font-size: 11.5px; font-weight: 400; color: var(--text-faint); }
+.fs-row {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  margin-bottom: 6px;
+}
+.fs-row select { flex: none; max-width: 148px; font-size: 12px; }
+.fs-row .fs-content { flex: 1; min-width: 0; }
+/* 状态以左缘色条区分：未收朱红 / 已收绿 / 废弃灰 */
+.fs-row { border-left: 2px solid transparent; padding-left: 6px; }
+.fs-row.st-open { border-left-color: var(--accent-focus); }
+.fs-row.st-resolved { border-left-color: var(--ok); }
+.fs-row.st-abandoned { border-left-color: var(--line-strong); opacity: 0.6; }
+.fs-row.st-resolved .fs-content, .fs-row.st-abandoned .fs-content { text-decoration: line-through; }
+
 .vol-head {
   display: flex;
   align-items: center;
