@@ -42,6 +42,24 @@ describe('buildSummariesText', () => {
     expect(text.indexOf('v01-第1章')).toBeLessThan(text.indexOf('v01-第3章'));
   });
 
+  it('回归：重写旧卷章节时不得注入后续卷的摘要', () => {
+    const o = outline();
+    // 给第 1 卷第 1 章组前情——所有已归档摘要都在它之后
+    const text = buildSummariesText(
+      o,
+      { v01c002: '二', v01c003: '三', v02c001: '四', v02c002: '五' },
+      'v01c001',
+    );
+    expect(text).toBe('');
+  });
+
+  it('起点章不在大纲时返回全部摘要（全书问答场景）', () => {
+    const o = outline();
+    const text = buildSummariesText(o, { v01c001: '一', v02c002: '五' }, 'nope');
+    expect(text).toContain('一');
+    expect(text).toContain('五');
+  });
+
   it('预算截断：预算为 0 时不返回任何内容', () => {
     const o = outline();
     // 通过内部常量无法直接改，这里验证超长预算行为——budget 逻辑用小文本验证顺序即可

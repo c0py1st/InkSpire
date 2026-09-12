@@ -32,9 +32,13 @@ export function buildSummariesText(
   let budget = SUMMARY_BUDGET_CHARS;
   // 从最后一章向前收集，保证最近章节的摘要在预算内
   const ordered: Array<{ title: string; text: string; volumeTitle: string }> = [];
+  // 只收集"本章之前"的摘要：命中 upTo 后必须连外层卷循环一起停，
+  // 否则后续卷的摘要会被当"前情"注入（回头重写旧章时造成剧透污染）
+  let reached = false;
   for (const vol of outline.volumes) {
+    if (reached) break;
     for (const ch of vol.chapters) {
-      if (ch.id === upToChapterId) break;
+      if (ch.id === upToChapterId) { reached = true; break; }
       const s = summaries[ch.id];
       if (s) ordered.push({ title: ch.title, text: s, volumeTitle: vol.title });
     }
