@@ -830,6 +830,15 @@ textarea { resize: vertical; line-height: 1.6; }
 .issue { border-left: 2px solid var(--warn); padding: 4px 0 4px 10px; font-size: 12.6px; }
 .issue .sev { font-weight: 700; font-size: 11px; margin-right: 6px; }
 .issue.sev-high { border-left-color: var(--danger); }
+/* 一致性检查：弹窗内的结果列表与抽屉里的复查入口 */
+.issues-body { max-height: 56vh; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; }
+.issue-reopen {
+  font: inherit; font-size: 12px; text-align: left;
+  margin-top: 10px; padding: 7px 10px;
+  background: var(--panel-2); color: var(--text-dim);
+  border: 1px solid var(--line); border-radius: var(--rad); cursor: pointer;
+}
+.issue-reopen:hover { border-color: var(--line-strong); color: var(--text); }
 .issue.sev-high .sev { color: var(--danger); }
 .issue.sev-medium .sev { color: var(--warn); }
 .issue.sev-low .sev { color: var(--text-faint); }

@@ -4,6 +4,7 @@ import type { ConsistencyIssue, ProposalKind } from '../../../shared/src/types';
 import { PROPOSAL_LABELS } from '../../../shared/src/types';
 import { api } from '../api/client';
 import { useStore } from '../state/store';
+import { BuDialog } from './BuDialog';
 import { Btn } from './primitives';
 import { DiffView } from './DiffView';
 
@@ -44,6 +45,7 @@ export function AiDrawer() {
   const [chatBusy, setChatBusy] = useState(false);
   const [proposals, setProposals] = useState<Proposal[]>([]);
   const [issues, setIssues] = useState<'idle' | 'loading' | Issue[] | null>('idle');
+  const [issuesOpen, setIssuesOpen] = useState(false);
 
   const bodyRef = useRef<HTMLDivElement>(null);
 
@@ -151,15 +153,18 @@ export function AiDrawer() {
   }
 
   /* ---------- 一致性检查 ---------- */
+  const [issuesChapter, setIssuesChapter] = useState('');
   async function checkConsistency() {
     if (!slug || !chapter) return;
-    setTab('assist');
     setIssues('loading');
+    setIssuesOpen(true);
     try {
       const res = await api.consistency(slug, chapter.id);
       setIssues(res.issues);
+      setIssuesChapter(chapter.title);
     } catch (err) {
-      setIssues('idle');
+      setIssues(null);
+      setIssuesOpen(false);
       toast((err as Error).message, 'error');
     }
   }
@@ -170,10 +175,11 @@ export function AiDrawer() {
   const suggBadge = sugg.length - suggestionsSeen;
 
   return (
-    <aside className="ai-drawer">
-      <div className="drawer-head">
-        批注
-        <span className="sub">{chapter ? `《${chapter.title}》` : '全书上下文'}</span>
+    <>
+      <aside className="ai-drawer">
+        <div className="drawer-head">
+          批注
+          <span className="sub">{chapter ? `《${chapter.title}》` : '全书上下文'}</span>
         <div style={{ flex: 1 }} />
         <Btn small ghost onClick={checkConsistency} disabled={!chapter} title="检查本章与设定/前情的矛盾">一致性检查</Btn>
       </div>
@@ -268,19 +274,10 @@ export function AiDrawer() {
               </div>
             ))}
 
-            {issues === 'loading' && <div className="progress-line" />}
             {Array.isArray(issues) && (
-              <>
-                <div style={{ fontWeight: 700, fontSize: 12.5, marginTop: 6 }}>一致性检查结果</div>
-                {issues.length === 0 && <div style={{ color: 'var(--ok)', fontSize: 12.5 }}>未发现明显矛盾。</div>}
-                {issues.map((it, i) => (
-                  <div key={i} className={`issue sev-${it.severity}`}>
-                    <span className="sev">{it.severity === 'high' ? '严重' : it.severity === 'medium' ? '中等' : '轻微'}</span>
-                    {it.description}
-                    {it.quote && <div className="quote">「{it.quote}」</div>}
-                  </div>
-                ))}
-              </>
+              <button className="issue-reopen" onClick={() => setIssuesOpen(true)}>
+                上次检查《{issuesChapter}》：{issues.length === 0 ? '未发现明显矛盾' : `${issues.length} 个问题`} · 重新查看
+              </button>
             )}
           </>
         )}
@@ -311,6 +308,45 @@ export function AiDrawer() {
           </div>
         )}
       </div>
-    </aside>
+      </aside>
+
+      {issuesOpen && (
+        <BuDialog open onClose={() => setIssuesOpen(false)} closeOnOutsidePress ariaTitle={`一致性检查 · ${issuesChapter}`} size="narrow">
+          <div className="m-head">
+            一致性检查结果
+            {issuesChapter && <span className="sub" style={{ fontWeight: 400, marginLeft: 8 }}>《{issuesChapter}》</span>}
+            <div style={{ flex: 1 }} />
+            <Btn ghost small onClick={() => setIssuesOpen(false)}>关闭</Btn>
+          </div>
+          <div className="m-body issues-body">
+            {issues === 'loading' && (
+              <>
+                <div className="progress-line" />
+                <div style={{ color: 'var(--text-dim)', fontSize: 12.5, marginTop: 8 }}>
+                  正在对照设定集、前情与伏笔登记表检查本章……
+                </div>
+              </>
+            )}
+            {Array.isArray(issues) && (
+              <>
+                {issues.length === 0 && <div style={{ color: 'var(--ok)', fontSize: 13 }}>未发现明显矛盾。</div>}
+                {issues.map((it, i) => (
+                  <div key={i} className={`issue sev-${it.severity}`}>
+                    <span className="sev">{it.severity === 'high' ? '严重' : it.severity === 'medium' ? '中等' : '轻微'}</span>
+                    {it.description}
+                    {it.quote && <div className="quote">「{it.quote}」</div>}
+                  </div>
+                ))}
+              </>
+            )}
+          </div>
+          <div className="m-foot">
+            <span style={{ fontSize: 11.5, color: 'var(--text-faint)' }}>检查只报告问题，不会改动正文；改完可再点一次复查。</span>
+            <div className="spacer" />
+            <Btn small onClick={() => void checkConsistency()} disabled={issues === 'loading'}>重新检查</Btn>
+          </div>
+        </BuDialog>
+      )}
+    </>
   );
 }
