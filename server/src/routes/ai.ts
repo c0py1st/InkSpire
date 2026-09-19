@@ -1,10 +1,11 @@
 import { Router } from 'express';
 import type { Request, Response } from 'express';
 import {
-  AppConfig, ChapterBeat, ChapterStatus, CharacterCard, ConsistencyIssue, GenChapterResult, Kernel, ProposalRequest, ProviderProfile, Suggestion, VolumeBrief,
+  AppConfig, ChapterBeat, ChapterStatus, CharacterCard, ConsistencyIssue, GenChapterResult, Kernel, ProposalRequest, ProviderProfile, Suggestion, ToolCall, VolumeBrief,
 } from '../../../shared/src/types';
 import { loadConfig } from '../config';
-import { chatOnce, streamChat } from '../ai/provider';
+import { chatOnce, streamChat, type ChatMessage } from '../ai/provider';
+import { TOOL_SPECS, executeTool } from '../ai/tools';
 import { extractJson } from '../ai/json';
 import { Sse, abortOnClose } from '../ai/sse';
 import { buildChapterContext, buildSummariesText, foreshadowText, locateChapter, nextChapterIds, selectionContext } from '../ai/memory';
@@ -582,6 +583,78 @@ aiRouter.post('/projects/:slug/finalize-chapter/:chapterId', async (req, res) =>
 
 /* ================= 批注抽屉 ================= */
 
+/** ReAct 循环预算：最多 5 轮；最后一轮禁工具，强制收敛到直接回答 */
+const MAX_REACT_STEPS = 5;
+
+async function runChatReact(
+  sse: Sse,
+  signal: AbortSignal,
+  cfg: AppConfig,
+  profile: ProviderProfile,
+  slug: string,
+  systemPrompt: string,
+  userPrompt: string,
+): Promise<void> {
+  const conversation: ChatMessage[] = [
+    { role: 'system', content: systemPrompt },
+    { role: 'user', content: userPrompt },
+  ];
+  let toolsSupported = true;
+  let stepsUsed = 0;
+  let truncated = false;
+
+  for (let step = 0; step < MAX_REACT_STEPS; step++) {
+    if (signal.aborted) break;
+    const isLast = step === MAX_REACT_STEPS - 1;
+    const useTools = toolsSupported && !isLast;
+    let finishReason = '';
+    let calls: ToolCall[] = [];
+    let text = '';
+    try {
+      for await (const delta of streamChat(cfg, profile, conversation, {
+        signal, kind: 'prose',
+        // 末轮不带 tools 即物理禁调用；tool_choice 只随 tools 一起发，
+        // 否则部分平台对"有 tool_choice 无 tools"报 400
+        ...(useTools ? { tools: TOOL_SPECS, toolChoice: 'auto' as const } : {}),
+        onMeta: (m) => { finishReason = m.finishReason ?? finishReason; },
+        onToolCalls: (c) => { calls = c; },
+      })) {
+        text += delta;
+        sse.delta(delta);
+      }
+    } catch (err) {
+      // 平台不认识 tools 参数（请求建立期即 400，无任何增量）：降级为普通对话重试本轮
+      const msg = (err as Error).message ?? '';
+      if (useTools && text === '' && /tool|400|not support|unsupported|invalid/i.test(msg)) {
+        toolsSupported = false;
+        sse.send({ type: 'tool', phase: 'end', name: '_degraded', detail: '该平台不支持工具调用，已降级为普通对话' });
+        step--; // 降级重试不消耗轮次预算
+        continue;
+      }
+      throw err;
+    }
+    if (signal.aborted) break;
+
+    if (finishReason === 'tool_calls' && calls.length && !isLast) {
+      stepsUsed++;
+      conversation.push({ role: 'assistant', content: text || null, tool_calls: calls });
+      for (const call of calls) {
+        sse.send({ type: 'tool', phase: 'start', name: call.function.name, detail: '' });
+        const outcome = executeTool(slug, call);
+        if (outcome.proposal) sse.send({ type: 'proposal', ...outcome.proposal });
+        sse.send({ type: 'tool', phase: 'end', name: call.function.name, detail: outcome.detail });
+        conversation.push({ role: 'tool', tool_call_id: call.id, content: outcome.content });
+      }
+      continue;
+    }
+
+    truncated = finishReason === 'length';
+    break; // 正常文本收尾
+  }
+
+  sse.send({ type: 'final', steps: stepsUsed, truncated: truncated || undefined });
+}
+
 aiRouter.post('/projects/:slug/chat', (req, res) => {
   const { slug } = req.params;
   const { messages, chapterId, selection } = req.body as {
@@ -632,12 +705,11 @@ aiRouter.post('/projects/:slug/chat', (req, res) => {
   });
 
   streamTask(req, res, async (sse, signal) => {
-    let truncated = false;
-    await streamToTask(sse, signal, profile, cfg, [
-      { role: 'system', content: prompt.system },
-      { role: 'user', content: prompt.user },
-    ], 'prose', undefined, undefined, (m) => { truncated = m.finishReason === 'length'; });
-    if (truncated) sse.send({ type: 'final', truncated: true });
+    await runChatReact(sse, signal, cfg, profile, slug,
+      prompt.system + '\n\n工作方式：你可以调用工具查书（搜索前文、读人物卡、读伏笔表、读任意章原文）后再回答，不要凭记忆瞎猜；'
+      + '作者要求"记一下伏笔"时用 register_foreshadow；涉及修改整章正文或重写摘要时，'
+      + '只能用 propose_chapter_content / propose_summary 提交提案（由作者采纳），绝不声称已经直接改好了正文。',
+      prompt.user);
   });
 });
 
