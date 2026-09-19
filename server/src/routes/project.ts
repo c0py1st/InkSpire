@@ -1,11 +1,12 @@
 import { Router } from 'express';
 import {
-  ChapterFile, CharacterCard, Foreshadow, Outline, SearchHit,
+  ChapterFile, CharacterCard, Foreshadow, Outline,
 } from '../../../shared/src/types';
 import { countChars } from '../../../shared/src/util';
 import {
-  listChapterBackups, listChapters, loadBundle, loadForeshadows, loadOutline, readChapter, readChapterBackup,
-  saveCharacters, saveChapterBody, saveOutline, saveForeshadows, saveSuggestions, saveWorldview,
+  listChapterBackups, listChapters, loadBundle, loadForeshadows, loadSummaries, readChapter, readChapterBackup,
+  saveCharacters, saveChapterBody, saveOutline, saveForeshadows, saveSummaries, saveSuggestions, saveWorldview,
+  searchChapters,
 } from '../fs-store';
 
 export const projectRouter = Router();
@@ -37,39 +38,12 @@ projectRouter.get('/:slug/chapter/:chapterId', (req, res) => {
 });
 
 /** 前文检索：在全部章节正文里找查询词，返回命中点偏移与上下文摘录 */
-const SNIP = 30;
+/** 前文检索：在全部章节正文里找查询词，返回命中点偏移与上下文摘录 */
 projectRouter.get('/:slug/search', (req, res) => {
   try {
     const q = String(req.query.q ?? '').trim();
     if (q.length < 1) return res.json([]);
-    const limit = Math.max(1, Math.min(80, Number(req.query.limit) || 40));
-    const outline = loadOutline(req.params.slug);
-    const volTitle = new Map<string, string>();
-    if (outline) for (const vol of outline.volumes) for (const ch of vol.chapters) volTitle.set(ch.id, vol.title);
-    const chapters = listChapters(req.params.slug); // 按 id 升序 = 阅读顺序
-    const needle = q.toLowerCase();
-    const hits: SearchHit[] = [];
-    for (const ch of chapters) {
-      const hay = ch.content.toLowerCase();
-      let from = 0;
-      for (;;) {
-        const at = hay.indexOf(needle, from);
-        if (at < 0) break;
-        const s = Math.max(0, at - SNIP);
-        const pre = ch.content.slice(s, at).replace(/\n/g, ' ');
-        const hit = ch.content.slice(at, at + q.length);
-        const post = ch.content.slice(at + q.length, at + q.length + SNIP).replace(/\n/g, ' ');
-        hits.push({
-          chapterId: ch.id, chapterTitle: ch.title, volumeTitle: volTitle.get(ch.id) ?? '',
-          offset: at,
-          snippet: `${s > 0 ? '…' : ''}${pre}〔${hit}〕${post}…`,
-        });
-        from = at + Math.max(1, needle.length);
-        if (hits.length >= limit) break;
-      }
-      if (hits.length >= limit) break;
-    }
-    res.json(hits);
+    res.json(searchChapters(req.params.slug, q, Number(req.query.limit) || 40));
   } catch (err) {
     res.status(400).json({ error: (err as Error).message });
   }
@@ -150,6 +124,21 @@ projectRouter.put('/:slug/foreshadows', (req, res) => {
     const items = sanitizeForeshadows(req.body);
     saveForeshadows(req.params.slug, items);
     res.json({ ok: true, count: items.length });
+  } catch (err) {
+    res.status(400).json({ error: (err as Error).message });
+  }
+});
+
+/** 单条章节摘要写入（agent 提案采纳用；readChapter 校验章 id 合法与存在） */
+projectRouter.put('/:slug/summary/:chapterId', (req, res) => {
+  try {
+    const summary = String(req.body?.summary ?? '').trim();
+    if (!summary) return res.status(400).json({ error: '摘要为空' });
+    readChapter(req.params.slug, req.params.chapterId); // 非法/不存在章会抛错
+    const summaries = loadSummaries(req.params.slug);
+    summaries[req.params.chapterId] = summary;
+    saveSummaries(req.params.slug, summaries);
+    res.json({ ok: true });
   } catch (err) {
     res.status(400).json({ error: (err as Error).message });
   }

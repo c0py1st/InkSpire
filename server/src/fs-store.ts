@@ -3,7 +3,7 @@ import path from 'node:path';
 import YAML from 'yaml';
 import {
   Bundle, ChapterFile, ChapterStatus, CharacterCard, Foreshadow, Outline, ProjectMeta,
-  Suggestion,
+  SearchHit, Suggestion,
 } from '../../shared/src/types';
 import { countChars } from '../../shared/src/util';
 import { DATA_DIR } from './config';
@@ -353,6 +353,45 @@ export function listChapters(slug: string): ChapterFile[] {
     out.push(parseChapterFile(readText(path.join(dir, f)), id));
   }
   return out.sort((a, b) => (a.id < b.id ? -1 : 1));
+}
+
+const SNIP = 30;
+
+/**
+ * 全书正文检索：忽略大小写，按阅读顺序返回命中点偏移与上下文摘录。
+ * 路由 GET /:slug/search 与 agent 工具 search_chapters 共用此函数。
+ */
+export function searchChapters(slug: string, q: string, limitIn = 40): SearchHit[] {
+  const query = q.trim();
+  if (!query) return [];
+  const limit = Math.max(1, Math.min(80, limitIn || 40));
+  const outline = loadOutline(slug);
+  const volTitle = new Map<string, string>();
+  if (outline) for (const vol of outline.volumes) for (const ch of vol.chapters) volTitle.set(ch.id, vol.title);
+  const chapters = listChapters(slug); // 按 id 升序 = 阅读顺序
+  const needle = query.toLowerCase();
+  const hits: SearchHit[] = [];
+  for (const ch of chapters) {
+    const hay = ch.content.toLowerCase();
+    let from = 0;
+    for (;;) {
+      const at = hay.indexOf(needle, from);
+      if (at < 0) break;
+      const s = Math.max(0, at - SNIP);
+      const pre = ch.content.slice(s, at).replace(/\n/g, ' ');
+      const hit = ch.content.slice(at, at + query.length);
+      const post = ch.content.slice(at + query.length, at + query.length + SNIP).replace(/\n/g, ' ');
+      hits.push({
+        chapterId: ch.id, chapterTitle: ch.title, volumeTitle: volTitle.get(ch.id) ?? '',
+        offset: at,
+        snippet: `${s > 0 ? '…' : ''}${pre}〔${hit}〕${post}…`,
+      });
+      from = at + Math.max(1, needle.length);
+      if (hits.length >= limit) break;
+    }
+    if (hits.length >= limit) break;
+  }
+  return hits;
 }
 
 function writeTextIfMissing(file: string, text: string): void {
