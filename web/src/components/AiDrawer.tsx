@@ -8,6 +8,17 @@ import { BuDialog } from './BuDialog';
 import { Btn } from './primitives';
 import { DiffView } from './DiffView';
 
+/** ReAct 轨迹步骤：工具名 + 一行摘要 + 是否已完成 */
+interface AgentStep { name: string; detail: string; done: boolean }
+/** 对话内提案卡（agent 的 propose_* 工具产出，采纳才落盘） */
+interface ChatProposal {
+  id: number;
+  kind: 'chapter' | 'summary';
+  chapterId: string;
+  content: string;
+  decided: boolean;
+}
+
 interface Proposal {
   id: number;
   kind: ProposalKind;
@@ -40,9 +51,13 @@ export function AiDrawer() {
   })));
 
   const [tab, setTab] = useState<'chat' | 'props' | 'assist'>('chat');
-  const [messages, setMessages] = useState<Array<{ role: 'user' | 'assistant'; content: string }>>([]);
+  const [messages, setMessages] = useState<Array<{
+    role: 'user' | 'assistant'; content: string;
+    steps?: AgentStep[]; proposals?: ChatProposal[];
+  }>>([]);
   const [input, setInput] = useState('');
   const [chatBusy, setChatBusy] = useState(false);
+  const chatCtlRef = useRef<AbortController | null>(null);
   const [proposals, setProposals] = useState<Proposal[]>([]);
   const [issues, setIssues] = useState<'idle' | 'loading' | Issue[] | null>('idle');
   const [issuesOpen, setIssuesOpen] = useState(false);
@@ -112,15 +127,29 @@ export function AiDrawer() {
     toast('已采纳并保存', 'ok');
   }
 
-  /* ---------- 对话 ---------- */
+  /* ---------- 对话（ReAct：工具轨迹 + 提案卡 + 可中断） ---------- */
+  let propId = 0; // 仅会话内唯一即可
+  const patchLast = (fn: (m: { content: string; steps?: AgentStep[]; proposals?: ChatProposal[] }) => { content: string; steps?: AgentStep[]; proposals?: ChatProposal[] }) => {
+    setMessages((ms) => {
+      const next = [...ms];
+      const last = next[next.length - 1];
+      if (last?.role !== 'assistant') return ms;
+      const patch = fn(last);
+      next[next.length - 1] = { ...last, ...patch };
+      return next;
+    });
+  };
+
   async function send() {
     if (!slug || chatBusy || !input.trim()) return;
     const question = input.trim();
     setInput('');
-    const history = [...messages, { role: 'user' as const, content: question }];
-    setMessages([...history, { role: 'assistant', content: '' }]);
+    const history = [...messages.map((m) => ({ role: m.role, content: m.content })), { role: 'user' as const, content: question }];
+    setMessages((ms) => [...ms, { role: 'assistant', content: '' }]);
     setChatBusy(true);
     setTab('chat');
+    const ctl = new AbortController();
+    chatCtlRef.current = ctl;
     let truncated = false;
     try {
       await api.chat(slug, {
@@ -128,28 +157,86 @@ export function AiDrawer() {
         chapterId: chapter?.id,
         selection: selection?.text,
       }, (delta) => {
-        setMessages((ms) => {
-          const next = [...ms];
-          next[next.length - 1] = { role: 'assistant', content: next[next.length - 1].content + delta };
-          return next;
-        });
+        patchLast((m) => ({ content: m.content + delta }));
         scrollBottom();
-      }, (obj) => { if (obj.truncated === true) truncated = true; });
+      }, (obj) => { if (obj.truncated === true) truncated = true; }, ctl.signal, (obj) => {
+        if (obj.type === 'tool') {
+          const name = String(obj.name ?? '');
+          const phase = String(obj.phase ?? '');
+          patchLast((m) => {
+            const steps = [...(m.steps ?? [])];
+            if (phase === 'start') steps.push({ name, detail: '', done: false });
+            else {
+              let idx = -1;
+              for (let k = steps.length - 1; k >= 0; k--) {
+                if (steps[k].name === name && !steps[k].done) { idx = k; break; }
+              }
+              if (idx >= 0) steps[idx] = { ...steps[idx], detail: String(obj.detail ?? ''), done: true };
+            }
+            return { content: m.content, steps };
+          });
+          scrollBottom();
+        } else if (obj.type === 'proposal') {
+          const p: ChatProposal = { id: ++propId, kind: obj.kind as 'chapter' | 'summary', chapterId: String(obj.chapterId), content: String(obj.content), decided: false };
+          patchLast((m) => ({ content: m.content, proposals: [...(m.proposals ?? []), p] }));
+          scrollBottom();
+        }
+      });
       if (truncated) {
-        setMessages((ms) => {
-          const next = [...ms];
-          const i = next.length - 1;
-          next[i] = { ...next[i], content: next[i].content + '\n\n（回答达到长度上限被截断了——把问题拆细一点再问，或回复"继续"）' };
-          return next;
-        });
+        patchLast((m) => ({ content: m.content + '\n\n（回答达到长度上限被截断了——把问题拆细一点再问，或回复"继续"）' }));
         scrollBottom();
       }
     } catch (err) {
-      toast((err as Error).message, 'error');
-      setMessages((ms) => ms.slice(0, -1));
+      if ((err as Error).name === 'AbortError') {
+        patchLast((m) => ({ content: m.content + '\n\n（已停止）' }));
+      } else {
+        toast((err as Error).message, 'error');
+        setMessages((ms) => {
+          const last = ms[ms.length - 1];
+          return last?.role === 'assistant' && !last.content && !last.steps?.length ? ms.slice(0, -1) : ms;
+        });
+      }
     } finally {
       setChatBusy(false);
+      chatCtlRef.current = null;
     }
+  }
+
+  function stopChat() {
+    chatCtlRef.current?.abort();
+  }
+
+  /** 采纳对话提案：正文走 saveChapter(backup)+刷新，摘要走 saveSummary */
+  async function acceptChatProposal(p: ChatProposal) {
+    if (!slug) return;
+    try {
+      if (p.kind === 'chapter') {
+        await api.saveChapter(slug, p.chapterId, { content: p.content, backup: true });
+        const st = useStore.getState();
+        if (st.chapter?.id === p.chapterId) {
+          useStore.setState({ chapter: { ...st.chapter, content: p.content }, saveState: 'saved' });
+        }
+        await st.reloadBundle();
+        toast(`已采纳：《${p.chapterId}》正文已更新（旧稿已备份）`, 'ok');
+      } else {
+        await api.saveSummary(slug, p.chapterId, p.content);
+        await useStore.getState().reloadBundle();
+        toast('已采纳：本章摘要已写入记忆', 'ok');
+      }
+      patchLast((m) => ({
+        content: m.content,
+        proposals: (m.proposals ?? []).map((x) => (x.id === p.id ? { ...x, decided: true } : x)),
+      }));
+    } catch (err) {
+      toast(`采纳失败：${(err as Error).message}`, 'error');
+    }
+  }
+
+  function rejectChatProposal(p: ChatProposal) {
+    patchLast((m) => ({
+      content: m.content,
+      proposals: (m.proposals ?? []).map((x) => (x.id === p.id ? { ...x, decided: true } : x)),
+    }));
   }
 
   /* ---------- 一致性检查 ---------- */
@@ -206,7 +293,35 @@ export function AiDrawer() {
             {messages.map((m, i) => (
               <div key={i} className={`msg ${m.role}`}>
                 <div className="who">{m.role === 'user' ? '你' : '编辑'}</div>
-                {m.content || (chatBusy && i === messages.length - 1 ? '…' : '')}
+                {m.steps?.length ? (
+                  <div className="agent-steps">
+                    {m.steps.map((s, k) => (
+                      <div key={k} className={`agent-step${s.done ? '' : ' running'}`}>
+                        <span className="st-name">{s.name === '_degraded' ? '⚠' : s.name.replace(/_/g, ' ')}</span>
+                        <span className="st-detail">{s.done ? s.detail : '执行中…'}</span>
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
+                {m.content || (chatBusy && i === messages.length - 1 && !m.steps?.some((s) => !s.done) ? '…' : '')}
+                {m.proposals?.length ? (
+                  <div className="chat-proposals">
+                    {m.proposals.map((p) => (
+                      <div key={p.id} className="chat-proposal">
+                        <div className="cp-head">{p.kind === 'chapter' ? `📝 整章正文修订提案 · ${p.chapterId}` : '🧠 摘要重写提案 · ' + p.chapterId}</div>
+                        <div className="cp-preview">{p.content.slice(0, 600)}{p.content.length > 600 ? '……（采纳后可在正文查看全文，旧稿已可经「历史」恢复）' : ''}</div>
+                        {p.decided
+                          ? <div className="cp-done">已处理</div>
+                          : (
+                            <div className="cp-actions">
+                              <Btn small primary onClick={() => void acceptChatProposal(p)}>采纳</Btn>
+                              <Btn small ghost onClick={() => rejectChatProposal(p)}>放弃</Btn>
+                            </div>
+                          )}
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
               </div>
             ))}
           </>
@@ -299,7 +414,9 @@ export function AiDrawer() {
             />
             <div className="hint">
               <span>{chapter ? '上下文：当前章节 + 设定集 + 前情摘要' : '上下文：全书设定'}</span>
-              <Btn small primary disabled={chatBusy || !input.trim()} onClick={() => void send()}>发送</Btn>
+              {chatBusy
+                ? <Btn small danger onClick={stopChat} title="中断本轮回答与工具调用">停止</Btn>
+                : <Btn small primary disabled={!input.trim()} onClick={() => void send()}>发送</Btn>}
             </div>
           </>
         ) : (

@@ -758,6 +758,28 @@ textarea { resize: vertical; line-height: 1.6; }
   padding-left: 10px;
   white-space: pre-wrap;
 }
+/* ReAct 工具轨迹：紧凑一行一个调用，运行中的呼吸提示 */
+.agent-steps { display: flex; flex-direction: column; gap: 2px; margin-bottom: 6px; white-space: normal; }
+.agent-step {
+  display: flex; gap: 8px; align-items: baseline;
+  font-size: 11.5px; color: var(--text-faint);
+  border: 1px solid var(--line); border-radius: var(--rad);
+  padding: 3px 8px; background: var(--panel-2);
+}
+.agent-step.running { border-color: var(--accent-focus); }
+.agent-step .st-name { font-weight: 600; color: var(--text-dim); flex: none; }
+.agent-step .st-detail { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* 对话内提案卡（agent propose_* 工具） */
+.chat-proposals { display: flex; flex-direction: column; gap: 8px; margin-top: 8px; white-space: normal; }
+.chat-proposal { border: 1px solid var(--line-strong); border-radius: var(--rad); background: var(--panel); padding: 8px 10px; }
+.chat-proposal .cp-head { font-size: 12px; font-weight: 700; margin-bottom: 6px; }
+.chat-proposal .cp-preview {
+  font-size: 12.3px; line-height: 1.7; color: var(--text-dim); white-space: pre-wrap;
+  max-height: 180px; overflow-y: auto;
+  border-left: 2px solid var(--accent-focus); padding-left: 8px;
+}
+.chat-proposal .cp-actions { display: flex; gap: 8px; margin-top: 8px; }
+.chat-proposal .cp-done { font-size: 11.5px; color: var(--text-faint); margin-top: 6px; }
 .msg .who {
   font-size: 11px;
   color: var(--text-faint);

@@ -31,13 +31,14 @@ function del<T>(url: string): Promise<T> {
   return fetch(url, { method: 'DELETE' }).then((r) => json<T>(r));
 }
 
-/** SSE 流式调用。onFinal 收到最后一条 final 事件；返回 final 对象或 null。signal 可中断（同时会掐断上游请求）。 */
+/** SSE 流式调用。onFinal 收到最后一条 final 事件；onExtra 收到 tool/proposal 等扩展事件；返回 final 对象或 null。signal 可中断（同时会掐断上游请求）。 */
 export async function sse<T = unknown>(
   url: string,
   body: unknown,
   onDelta: (text: string) => void,
   onFinal?: (obj: Record<string, unknown>) => void,
   signal?: AbortSignal,
+  onExtra?: (obj: Record<string, unknown>) => void,
 ): Promise<T | null> {
   const res = await fetch(url, {
     method: 'POST',
@@ -76,6 +77,7 @@ export async function sse<T = unknown>(
             final = obj as unknown as T;
             onFinal?.(obj);
           } else if (obj.type === 'error') throw new Error(obj.message ?? '模型调用失败');
+          else onExtra?.(obj); // tool / proposal 等扩展事件
         } catch (err) {
           if (err instanceof SyntaxError) continue; // 非 JSON 行忽略
           throw err;
@@ -204,7 +206,11 @@ export const api = {
     payload: { messages: Array<{ role: 'user' | 'assistant'; content: string }>; chapterId?: string; selection?: string },
     onDelta: (t: string) => void,
     onFinal?: (obj: Record<string, unknown>) => void,
-  ) => sse(`/api/projects/${slug}/chat`, payload, onDelta, onFinal),
+    signal?: AbortSignal,
+    onExtra?: (obj: Record<string, unknown>) => void,
+  ) => sse(`/api/projects/${slug}/chat`, payload, onDelta, onFinal, signal, onExtra),
+  saveSummary: (slug: string, chapterId: string, summary: string) =>
+    put<{ ok: true }>(`/api/projects/${slug}/summary/${chapterId}`, { summary }),
   propose: (slug: string, payload: ProposalRequest, onDelta: (t: string) => void) =>
     sse(`/api/projects/${slug}/propose`, payload, onDelta),
 
