@@ -1,13 +1,17 @@
-import { AppConfig, ProviderProfile } from '../../../shared/src/types';
+import { AppConfig, ProviderProfile, ToolCall, ToolSpec } from '../../../shared/src/types';
 
 /**
  * OpenAI 兼容协议的唯一实现：POST /chat/completions (stream: true)。
- * 换任何供应商 = 在设置里改 baseURL / apiKey / model，不需要动这里。
+ * 换任何供应商 = 在设置页改 baseURL / apiKey / model，不需要动这里。
  */
 
 export interface ChatMessage {
-  role: 'system' | 'user' | 'assistant';
-  content: string;
+  role: 'system' | 'user' | 'assistant' | 'tool';
+  content: string | null;
+  /** assistant 消息可携带模型发起的工具调用 */
+  tool_calls?: ToolCall[];
+  /** tool 消息回填对应调用的结果 */
+  tool_call_id?: string;
 }
 
 export interface StreamOptions {
@@ -18,6 +22,11 @@ export interface StreamOptions {
   kind?: 'json' | 'prose' | 'summary';
   /** 流结束时回传 finish_reason 等元信息（如 length=被截断） */
   onMeta?: (meta: { finishReason?: string; usage?: unknown }) => void;
+  /** 函数调用：发给模型的 tools 定义与选择策略（缺省不带，行为与旧版一致） */
+  tools?: ToolSpec[];
+  toolChoice?: 'auto' | 'none';
+  /** 流内聚合完的工具调用回调（finish_reason=tool_calls 时必有非空数组） */
+  onToolCalls?: (calls: ToolCall[]) => void;
 }
 
 export class ProviderError extends Error {
@@ -124,8 +133,9 @@ export async function* streamChat(
   if (!profile) throw new ProviderError('尚未配置模型，请先到设置页选择模型');
 
   if (cfg.mockMode || !profile.apiKey.trim()) {
-    // 演示模式
-    const hint = messages.map((m) => m.content).join(' ');
+    // 演示模式：带 tools 的对话请求直接忽略工具、单轮普通回答，
+    // 保证 ReAct 循环在演示模式下不报错（调用方靠 finish_reason 判定收敛）。
+    const hint = messages.map((m) => m.content ?? '').join(' ');
     if (opts.kind === 'json') {
       const json = yieldMockJson(hint);
       for (const chunk of splitChunks(json, 24)) yield chunk;
@@ -156,6 +166,8 @@ export async function* streamChat(
     // content 为 0 或把正文拦腰截断），结构化与正文任务均禁用；且思考与正文
     // 共享 max_tokens，禁用后速度与产出都稳定。
     ...(isDeepSeekHost ? { thinking: { type: 'disabled' }, stream_options: { include_usage: true } } : {}),
+    // 函数调用：仅在调用方显式给了 tools 时注入，旧路径零影响
+    ...(opts.tools?.length ? { tools: opts.tools, tool_choice: opts.toolChoice ?? 'auto' } : {}),
   });
 
   // 限流(429)/网络抖动自动退避重试。仅在尚未产出任何增量时重试才安全，
@@ -204,6 +216,15 @@ export async function* streamChat(
     let yielded = 0;
     let lineCount = 0;
     let rawHead = '';
+    // 工具调用分片聚合：arguments 是流式拼出来的 JSON 字符串，按 index 归位
+    const toolAcc = new Map<number, { id: string; name: string; args: string }>();
+    const flushToolCalls = () => {
+      if (!opts.onToolCalls || toolAcc.size === 0) return;
+      const calls: ToolCall[] = [...toolAcc.entries()].sort((a, b) => a[0] - b[0])
+        .map(([, c]) => ({ id: c.id, type: 'function' as const, function: { name: c.name, arguments: c.args } }));
+      if (calls.some((c) => c.function.name)) opts.onToolCalls(calls);
+      toolAcc.clear();
+    };
     while (true) {
       const { done, value } = await reader.read();
       if (done) break;
@@ -219,13 +240,26 @@ export async function* streamChat(
         if (!line.startsWith('data:')) continue;
         const payload = line.slice(5).trim();
         if (payload === '[DONE]') {
-          if (yielded === 0) console.error('[moge:streamChat] 空流诊断: 收到[DONE]但无增量 status=' + res.status + ' lines=' + lineCount + ' rawHead=' + JSON.stringify(rawHead));
+          if (yielded === 0 && toolAcc.size === 0) console.error('[moge:streamChat] 空流诊断: 收到[DONE]但无增量 status=' + res.status + ' lines=' + lineCount + ' rawHead=' + JSON.stringify(rawHead));
+          flushToolCalls();
           return;
         }
         try {
           const obj = JSON.parse(payload);
           const delta: string | undefined = obj.choices?.[0]?.delta?.content;
           if (delta) { yielded++; yield delta; }
+          const tcs: Array<{ index?: number; id?: string; function?: { name?: string; arguments?: string } }> | undefined
+            = obj.choices?.[0]?.delta?.tool_calls;
+          if (Array.isArray(tcs)) {
+            for (const t of tcs) {
+              const i = typeof t.index === 'number' ? t.index : 0;
+              const cur = toolAcc.get(i) ?? { id: '', name: '', args: '' };
+              if (t.id) cur.id = t.id;
+              if (t.function?.name) cur.name += t.function.name;
+              if (t.function?.arguments) cur.args += t.function.arguments;
+              toolAcc.set(i, cur);
+            }
+          }
           const fr: string | undefined = obj.choices?.[0]?.finish_reason;
           if (fr) opts.onMeta?.({ finishReason: fr, usage: obj.usage });
         } catch {
@@ -233,7 +267,8 @@ export async function* streamChat(
         }
       }
     }
-    if (yielded === 0) console.error('[moge:streamChat] 空流诊断: 流结束无增量 status=' + res.status + ' lines=' + lineCount + ' rawHead=' + JSON.stringify(rawHead));
+    if (yielded === 0 && toolAcc.size === 0) console.error('[moge:streamChat] 空流诊断: 流结束无增量 status=' + res.status + ' lines=' + lineCount + ' rawHead=' + JSON.stringify(rawHead));
+    flushToolCalls();
     return; // 流正常结束
   }
 }

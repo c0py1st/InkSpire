@@ -133,6 +133,25 @@ export interface ChatMsg {
   content: string;
 }
 
+/* ---------------- Agent 工具调用（OpenAI 兼容协议） ---------------- */
+
+/** 模型发起的一次工具调用（arguments 是 JSON 字符串，由服务端解析校验） */
+export interface ToolCall {
+  id: string;
+  type: 'function';
+  function: { name: string; arguments: string };
+}
+
+/** 发给模型的函数 schema 定义 */
+export interface ToolSpec {
+  type: 'function';
+  function: {
+    name: string;
+    description: string;
+    parameters: Record<string, unknown>;
+  };
+}
+
 export type ProposalKind = 'polish' | 'expand' | 'condense' | 'rewrite' | 'custom';
 
 export interface ProposalRequest {
