@@ -12,8 +12,9 @@ interface WizVolume { title: string; summary: string; chapters: WizChapter[] }
 const STEPS = ['构想', '内核', '分卷', '章节细纲', '设定集', '成书'];
 
 export function Wizard() {
-  const { setWizardOpen, openProject, toast, config } = useStore(useShallow((s) => ({
+  const { setWizardOpen, openProject, toast, config, confirmAsk } = useStore(useShallow((s) => ({
     setWizardOpen: s.setWizardOpen, openProject: s.openProject, toast: s.toast, config: s.config,
+    confirmAsk: s.confirmAsk,
   })));
   const demo = !config?.mockMode && !(config?.providers ?? []).some((p) => p.apiKey.trim());
 
@@ -84,7 +85,7 @@ export function Wizard() {
 
   const genKernel = () =>
     run(async () => {
-      if (kernel && !window.confirm('重新生成会覆盖当前内核（包括你手动修改过的内容），继续？')) return false;
+      if (kernel && !await confirmAsk('重新生成会覆盖当前内核（包括你手动修改过的内容），继续？', { title: '重新生成内核', okLabel: '继续' })) return false;
       const final = await api.wizardKernel(idea, scale, onDelta);
       if (!final?.kernel) throw new Error('未取到内核结果');
       setKernel(final.kernel);
@@ -104,9 +105,9 @@ export function Wizard() {
       return true;
     });
 
-  const regenVolumes = () => {
-    if (volumes.some((v) => v.chapters.length) && !window.confirm('重新生成分卷会覆盖现有分卷与章节细纲，继续？')) return;
-    void genVolumes();
+  const regenVolumes = async () => {
+    if (volumes.some((v) => v.chapters.length) && !await confirmAsk('重新生成分卷会覆盖现有分卷与章节细纲，继续？', { title: '重新生成分卷', okLabel: '继续' })) return;
+    await genVolumes();
   };
 
   const genBeats = (vi: number) =>
@@ -181,8 +182,8 @@ export function Wizard() {
 
   const anyChapters = volumes.some((v) => v.chapters.length > 0);
 
-  function closeWizard() {
-    if (busy && !window.confirm('正在生成中，关闭会丢失本步结果，确定关闭？')) return;
+  async function closeWizard() {
+    if (busy && !await confirmAsk('正在生成中，关闭会丢失本步结果，确定关闭？', { title: '关闭向导', okLabel: '确定关闭' })) return;
     setWizardOpen(false);
   }
 
@@ -192,7 +193,7 @@ export function Wizard() {
       onClose={(reason) => {
         // 与旧版一致：点遮罩不关闭；Esc 视同点「关闭」（生成中会弹确认）
         if (reason === 'outside-press') return;
-        closeWizard();
+        void closeWizard();
       }}
       ariaTitle="开新书"
     >

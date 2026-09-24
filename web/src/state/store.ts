@@ -46,6 +46,14 @@ export interface Toast {
   kind: 'info' | 'error' | 'ok';
 }
 
+/** 应用内确认框请求：resolve 以 Promise 形式把用户选择交还给调用方 */
+export interface ConfirmRequest {
+  title: string;
+  message: string;
+  okLabel: string;
+  resolve: (ok: boolean) => void;
+}
+
 interface Store {
   // UI
   theme: ThemePref;
@@ -55,6 +63,7 @@ interface Store {
   settingsOpen: boolean;
   wizardOpen: boolean;
   toasts: Toast[];
+  confirmReq: ConfirmRequest | null;
 
   // 数据
   config: AppConfig | null;
@@ -78,6 +87,9 @@ interface Store {
   init: () => Promise<void>;
   setTheme: (pref: ThemePref) => void;
   toast: (text: string, kind?: Toast['kind']) => void;
+  /** 应用内确认框（替代原生 window.confirm，内嵌 WebView 中原生框不可见会挂死页面）；确认 true / 取消或关闭 false */
+  confirmAsk: (message: string, opts?: { title?: string; okLabel?: string }) => Promise<boolean>;
+  answerConfirm: (ok: boolean) => void;
   setView: (v: CenterView) => void;
   setDrawer: (open: boolean) => void;
   setFocus: (on: boolean) => void;
@@ -164,6 +176,7 @@ export const useStore = create<Store>((set, get) => ({
   settingsOpen: false,
   wizardOpen: false,
   toasts: [],
+  confirmReq: null,
 
   config: null,
   projects: [],
@@ -207,6 +220,24 @@ export const useStore = create<Store>((set, get) => ({
     const id = toastSeq++;
     set((s) => ({ toasts: [...s.toasts, { id, text, kind }] }));
     setTimeout(() => set((s) => ({ toasts: s.toasts.filter((t) => t.id !== id) })), kind === 'error' ? 6000 : 3200);
+  },
+
+  confirmAsk(message, opts) {
+    // 理论上不会并发弹确认框；若有旧的挂起请求，先按「取消」了结，避免 Promise 悬挂
+    const prev = get().confirmReq;
+    if (prev) {
+      prev.resolve(false);
+    }
+    return new Promise<boolean>((resolve) => {
+      set({ confirmReq: { title: opts?.title ?? '请确认', message, okLabel: opts?.okLabel ?? '确定', resolve } });
+    });
+  },
+
+  answerConfirm(ok) {
+    const req = get().confirmReq;
+    if (!req) return;
+    set({ confirmReq: null });
+    req.resolve(ok);
   },
 
   setView: (centerView) => set({ centerView, focusMode: false }),

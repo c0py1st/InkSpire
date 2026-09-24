@@ -344,6 +344,7 @@ export function EditorView() {
 function HistoryModal(props: { slug: string; chapterId: string; chapterTitle: string; onClose: () => void }) {
   const { slug, chapterId, chapterTitle, onClose } = props;
   const toast = useStore((s) => s.toast);
+  const confirmAsk = useStore((s) => s.confirmAsk);
   const [list, setList] = useState<Array<{ stamp: string; epoch: number; chars: number; title: string }> | null>(null);
   const [preview, setPreview] = useState<{ stamp: string; text: string } | null>(null);
   const [busy, setBusy] = useState(false);
@@ -370,7 +371,7 @@ function HistoryModal(props: { slug: string; chapterId: string; chapterTitle: st
   }
 
   async function restore(stamp: string) {
-    if (!window.confirm('恢复该版本？当前正文会先自动备份一份，可随时再恢复回来。')) return;
+    if (!await confirmAsk('恢复该版本？当前正文会先自动备份一份，可随时再恢复回来。', { title: '恢复历史版本', okLabel: '恢复' })) return;
     setBusy(true);
     try {
       const doc = await api.getBackup(slug, chapterId, stamp);

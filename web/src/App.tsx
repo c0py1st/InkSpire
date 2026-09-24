@@ -10,12 +10,14 @@ import { EditorView } from './components/EditorView';
 import { AiDrawer } from './components/AiDrawer';
 import { SettingsModal } from './components/SettingsModal';
 import { Wizard } from './components/Wizard';
+import { ConfirmDialog } from './components/ConfirmDialog';
 
 export default function App() {
-  const { init, slug, focusMode, drawerOpen, toasts, settingsOpen, wizardOpen, centerView } =
+  const { init, slug, focusMode, drawerOpen, toasts, settingsOpen, wizardOpen, centerView, confirmReq } =
     useStore(useShallow((s) => ({
       init: s.init, slug: s.slug, focusMode: s.focusMode, drawerOpen: s.drawerOpen,
       toasts: s.toasts, settingsOpen: s.settingsOpen, wizardOpen: s.wizardOpen, centerView: s.centerView,
+      confirmReq: s.confirmReq,
     })));
 
   useEffect(() => {
@@ -40,6 +42,7 @@ export default function App() {
       )}
       {settingsOpen && <SettingsModal />}
       {wizardOpen && <Wizard />}
+      {confirmReq && <ConfirmDialog />}
       <div className="toast-wrap">
         {toasts.map((t) => (
           <div key={t.id} className={`toast ${t.kind}`}>{t.text}</div>
