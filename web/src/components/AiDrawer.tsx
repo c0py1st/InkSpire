@@ -175,6 +175,8 @@ export function AiDrawer() {
             }
             return { content: m.content, steps };
           });
+          // register_foreshadow 是直接落盘的写工具：重拉 bundle，伏笔登记表立即出现新行
+          if (phase === 'end' && name === 'register_foreshadow') void useStore.getState().reloadBundle();
           scrollBottom();
         } else if (obj.type === 'proposal') {
           const p: ChatProposal = { id: ++propId, kind: obj.kind as 'chapter' | 'summary', chapterId: String(obj.chapterId), content: String(obj.content), decided: false };

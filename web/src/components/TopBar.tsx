@@ -5,11 +5,12 @@ import { ThemeToggle } from './ThemeToggle';
 export function TopBar() {
   const {
     slug, bundle, focusMode, setFocus, drawerOpen, setDrawer,
-    setSettingsOpen, setWizardOpen, backHome, centerView, setView,
+    setSettingsOpen, setWizardOpen, backHome, centerView, setView, config,
   } = useStore(useShallow((s) => ({
     slug: s.slug, bundle: s.bundle, focusMode: s.focusMode, setFocus: s.setFocus,
     drawerOpen: s.drawerOpen, setDrawer: s.setDrawer, setSettingsOpen: s.setSettingsOpen,
     setWizardOpen: s.setWizardOpen, backHome: s.backHome, centerView: s.centerView, setView: s.setView,
+    config: s.config,
   })));
 
   // 直接求和即可：bundle 变化频率本就不高，无需手动 memo（React Compiler 也不认可此写法）
@@ -17,8 +18,9 @@ export function TopBar() {
     ? Object.values(bundle.wordCounts).reduce((a, b) => a + b, 0)
     : 0;
 
-  const noKey = !bundle && !slug && !useStore.getState().config?.mockMode
-    && !(useStore.getState().config?.providers ?? []).some((p) => p.apiKey.trim());
+  // 必须订阅 config：曾用 getState 非响应式读取，首帧 config 未加载即误判为无密钥，横幅常驻不消失
+  const noKey = !bundle && !slug && !!config && !config.mockMode
+    && !config.providers.some((p) => p.apiKey.trim());
 
   return (
     <header className="topbar">
