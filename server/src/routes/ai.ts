@@ -708,7 +708,9 @@ aiRouter.post('/projects/:slug/chat', (req, res) => {
     await runChatReact(sse, signal, cfg, profile, slug,
       prompt.system + '\n\n工作方式：你可以调用工具查书（搜索前文、读人物卡、读伏笔表、读任意章原文）后再回答，不要凭记忆瞎猜；'
       + '作者要求"记一下伏笔"时用 register_foreshadow；涉及修改整章正文或重写摘要时，'
-      + '只能用 propose_chapter_content / propose_summary 提交提案（由作者采纳），绝不声称已经直接改好了正文。',
+      + '只能用 propose_chapter_content / propose_summary 提交提案（由作者采纳），绝不声称已经直接改好了正文。'
+      + '指令执行原则：作者已给出明确指令（说清了目标章与想要的动作）时，查证事实后直接完成它——该提提案就提提案、该登记就登记，不要再追问方向或请求确认；'
+      + '只有当关键信息确实缺失、或与大纲/前情存在明显冲突时才反问，且一次性把所有问题问完。',
       prompt.user);
   });
 });
