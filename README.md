@@ -1,6 +1,6 @@
 # 墨阁 · 本地长篇小说创作 Agent
 
-[![CI](https://github.com/c0py1st/InkSpire/actions/workflows/ci.yml/badge.svg)](https://github.com/c0py1st/InkSpire/actions/workflows/ci.yml)
+[![CI](https://github.com/c0py1st/InkSpire/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/c0py1st/InkSpire/actions/workflows/ci.yml?query=branch%3Amain)
 
 一个完全跑在本机的写作工具：**你给一段提示词，它整理出大纲并严格按照大纲写正文**。
 所有数据都是磁盘上的普通文件（Markdown + JSON），随时可以用其他编辑器打开，也方便进版本管理。
