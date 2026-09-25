@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Foreshadow, Outline } from '../../shared/src/types';
-import { buildSummariesText, flattenChapterIds, foreshadowText, locateChapter, nextChapterIds } from './ai/memory';
+import { buildSummariesText, flattenChapterIds, foreshadowText, locateChapter, nextChapterIds, openForeshadowListText } from './ai/memory';
 
 function fs_(over: Partial<Foreshadow>): Foreshadow {
   return {
@@ -134,5 +134,34 @@ describe('foreshadowText', () => {
 
   it('空表返回空串', () => {
     expect(foreshadowText(o, [], 'v01c001')).toBe('');
+  });
+});
+
+describe('openForeshadowListText（全书上下文）', () => {
+  const o = outline();
+
+  it('未回收条目同时带埋设章与计划回收章（不再丢回收信息）', () => {
+    const text = openForeshadowListText(o, [
+      fs_({ id: 'a', setupChapterId: 'v01c001', payoffChapterId: 'v01c003', content: '粮栈案' }),
+    ]);
+    expect(text).toContain('埋设于《');
+    expect(text).toContain('(v01c001)');
+    expect(text).toContain('计划回收于');
+    expect(text).toContain('(v01c003)');
+  });
+
+  it('回收章未定时如实标注；已回收/废弃不列', () => {
+    const text = openForeshadowListText(o, [
+      fs_({ id: 'a', content: '待定线' }),
+      fs_({ id: 'b', content: '收了', status: 'resolved' }),
+      fs_({ id: 'c', content: '废了', status: 'abandoned' }),
+    ]);
+    expect(text).toContain('回收章未定');
+    expect(text).not.toContain('收了');
+    expect(text).not.toContain('废了');
+  });
+
+  it('空表返回空串', () => {
+    expect(openForeshadowListText(o, [])).toBe('');
   });
 });

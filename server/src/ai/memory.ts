@@ -112,6 +112,15 @@ export function buildChapterContext(args: {
   };
 }
 
+/** 章 id → 《标题》(id) 展示格式；找不到章时退化为 (id) */
+function chapterRef(outline: Outline, cid: string): string {
+  for (const v of outline.volumes) {
+    const c = v.chapters.find((x) => x.id === cid);
+    if (c) return `《${c.title}》(${cid})`;
+  }
+  return `(${cid})`;
+}
+
 /**
  * 生成章节时注入的伏笔备忘：
  * 埋设章已在本章之前的未回收伏笔 + 指定本章回收的伏笔。
@@ -121,13 +130,7 @@ export function foreshadowText(outline: Outline, items: Foreshadow[], chapterId:
   const order = flattenChapterIds(outline);
   const at = order.indexOf(chapterId);
   if (at < 0) return '';
-  const titleOf = (cid: string) => {
-    for (const v of outline.volumes) {
-      const c = v.chapters.find((x) => x.id === cid);
-      if (c) return `《${c.title}》(${cid})`;
-    }
-    return `(${cid})`;
-  };
+  const titleOf = (cid: string) => chapterRef(outline, cid);
   const dueLines: string[] = [];
   const openLines: string[] = [];
   for (const f of items) {
@@ -142,6 +145,21 @@ export function foreshadowText(outline: Outline, items: Foreshadow[], chapterId:
     }
   }
   return [...dueLines, ...openLines].join('\n');
+}
+
+/**
+ * 全书（未打开章节）上下文用的未回收伏笔清单：
+ * 埋设章与计划回收章都完整带上——曾有内联格式漏掉回收章，编辑据此答题会答成"回收章未定"。
+ */
+export function openForeshadowListText(outline: Outline, items: Foreshadow[]): string {
+  const open = items.filter((f) => f.status === 'open');
+  if (!open.length) return '';
+  return open
+    .map((f) => {
+      const plan = f.payoffChapterId ? `，计划回收于${chapterRef(outline, f.payoffChapterId)}` : '，回收章未定';
+      return `- 未回收：${f.content}（埋设于${chapterRef(outline, f.setupChapterId)}${plan}）`;
+    })
+    .join('\n');
 }
 
 /** 供改写/问答用的轻量上下文 */

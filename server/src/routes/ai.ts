@@ -8,7 +8,7 @@ import { chatOnce, streamChat, type ChatMessage } from '../ai/provider';
 import { TOOL_SPECS, executeTool } from '../ai/tools';
 import { extractJson } from '../ai/json';
 import { Sse, abortOnClose } from '../ai/sse';
-import { buildChapterContext, buildSummariesText, foreshadowText, locateChapter, nextChapterIds, selectionContext } from '../ai/memory';
+import { buildChapterContext, buildSummariesText, foreshadowText, locateChapter, nextChapterIds, openForeshadowListText, selectionContext } from '../ai/memory';
 import { kernelPrompt } from '../ai/prompts/kernel';
 import { volumesPrompt } from '../ai/prompts/volumes';
 import { beatsPrompt } from '../ai/prompts/beats';
@@ -693,8 +693,7 @@ aiRouter.post('/projects/:slug/chat', (req, res) => {
     foreshadows: outline
       ? (chapterId
         ? foreshadowText(outline, bundle.foreshadows, chapterId)
-        : bundle.foreshadows.filter((f) => f.status === 'open')
-          .map((f) => `- 未回收：${f.content}（埋设于 ${f.setupChapterId}）`).join('\n'))
+        : openForeshadowListText(outline, bundle.foreshadows))
       : '',
     chapterTitle,
     chapterBeat,
