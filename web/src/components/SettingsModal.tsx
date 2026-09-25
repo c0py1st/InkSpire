@@ -19,8 +19,9 @@ function matchPreset(baseURL: string) {
  * 添加配置只在列表追加一项并在右侧展开编辑；角色槽位（创作/辅助）在详情里指定。
  */
 export function SettingsModal() {
-  const { config, saveConfig, setSettingsOpen, toast } = useStore(useShallow((s) => ({
+  const { config, saveConfig, setSettingsOpen, toast, confirmAsk } = useStore(useShallow((s) => ({
     config: s.config, saveConfig: s.saveConfig, setSettingsOpen: s.setSettingsOpen, toast: s.toast,
+    confirmAsk: s.confirmAsk,
   })));
   const [draft, setDraft] = useState<AppConfig | null>(() => (config ? JSON.parse(JSON.stringify(config)) : null));
   const [selectedId, setSelectedId] = useState<string | null>(config?.providers[0]?.id ?? null);
@@ -94,6 +95,19 @@ export function SettingsModal() {
     }
   }
 
+  /** 清除的是服务端存档里的密钥（立即生效），随后保存与否都不再持有它 */
+  async function clearKey() {
+    if (!selected) return;
+    if (!await confirmAsk(`清除「${selected.name || '未命名配置'}」已保存的 API Key？清除后需重新填写才能真实调用模型。`, { title: '清除密钥', okLabel: '清除' })) return;
+    try {
+      await api.clearProviderKey(selected.id);
+      patchSelected({ apiKey: '', hasKey: false });
+      toast('密钥已清除', 'ok');
+    } catch (err) {
+      toast((err as Error).message, 'error');
+    }
+  }
+
   if (!draft) return null;
 
   return (
@@ -120,9 +134,9 @@ export function SettingsModal() {
                 key={p.id}
                 className={`prov-item${selected?.id === p.id ? ' active' : ''}`}
                 onClick={() => { setSelectedId(p.id); setTestResult(''); }}
-                title={p.apiKey.trim() ? '已配置密钥' : '未填密钥（该配置将走演示模式）'}
+                title={p.hasKey || p.apiKey.trim() ? '已配置密钥（界面不回显明文）' : '未填密钥（该配置将走演示模式）'}
               >
-                <span className={`prov-dot ${p.apiKey.trim() ? 'ok' : 'empty'}`} />
+                <span className={`prov-dot ${p.hasKey || p.apiKey.trim() ? 'ok' : 'empty'}`} />
                 <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                   {p.name || '未命名配置'}
                 </span>
@@ -146,6 +160,7 @@ export function SettingsModal() {
                 onSetCreative={() => setDraft({ ...draft, creativeId: selected.id })}
                 onSetAssist={() => setDraft({ ...draft, assistId: draft.assistId === selected.id ? null : selected.id })}
                 onDelete={deleteSelected}
+                onClearKey={() => void clearKey()}
                 onTest={() => void testSelected()}
               />
             ) : (
@@ -166,7 +181,7 @@ export function SettingsModal() {
             强制演示模式
           </label>
           <span style={{ fontSize: 11.5, color: 'var(--text-faint)' }}>
-            密钥只保存在本机 data/.config.json；未填密钥的配置走演示模式
+            密钥只保存在本机 data/.config.json，接口与界面都不回显明文；未填密钥的配置走演示模式
           </span>
           <div className="spacer" />
           <Btn onClick={() => setSettingsOpen(false)}>取消</Btn>
@@ -186,6 +201,7 @@ function ProvDetail(props: {
   onSetCreative: () => void;
   onSetAssist: () => void;
   onDelete: () => void;
+  onClearKey: () => void;
   onTest: () => void;
 }) {
   const { p, testing, testResult } = props;
@@ -300,17 +316,20 @@ function ProvDetail(props: {
           />
         </label>
         <label className="param">
-          <span className="cap">API Key（只保存在本机，不会上传）</span>
+          <span className="cap">API Key（只保存在本机，界面不回显明文）</span>
           <div className="key-wrap">
             <input
               type={showKey ? 'text' : 'password'}
               value={p.apiKey}
-              placeholder="sk-……"
+              placeholder={p.hasKey ? '已配置 ······（留空保持不变，输入新值即替换）' : 'sk-……'}
               onChange={(e) => props.onChange({ apiKey: e.target.value })}
             />
             <button className="btn small eye" onClick={() => setShowKey((s) => !s)}>{showKey ? '隐藏' : '显示'}</button>
+            {p.hasKey && (
+              <button className="btn small ghost" onClick={props.onClearKey} title="从本机存档中删除已保存的密钥">清除</button>
+            )}
           </div>
-          <small>未填 Key 时该配置走演示模式（本地占位内容）</small>
+          <small>{p.hasKey ? '已存有密钥；留空保存不会丢失，点「清除」才会删除' : '未填 Key 时该配置走演示模式（本地占位内容）'}</small>
         </label>
       </div>
 

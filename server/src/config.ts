@@ -59,3 +59,29 @@ export function saveConfig(cfg: AppConfig): void {
 export function isMock(cfg: AppConfig, profile: { apiKey?: string } | null | undefined): boolean {
   return cfg.mockMode || !profile || !profile.apiKey?.trim();
 }
+
+/** 出网脱敏：GET /api/settings 用。密钥一律置空，只留 hasKey 派生标志 */
+export function maskConfig(cfg: AppConfig): AppConfig {
+  return {
+    ...cfg,
+    providers: cfg.providers.map((p) => ({
+      ...p,
+      apiKey: '',
+      hasKey: Boolean(p.apiKey && p.apiKey.trim()),
+    })),
+  };
+}
+
+/** 入网合并：PUT /api/settings 用。按 id 认领已存密钥——apiKey 留空 = 保持不变；
+ *  输入了新值 = 覆盖；已存档里没有的 id 保持空。派生字段（hasKey）不落盘。 */
+export function mergeKeys(incoming: AppConfig, stored: AppConfig): AppConfig {
+  const byId = new Map(stored.providers.map((p) => [p.id, p]));
+  return {
+    ...incoming,
+    providers: incoming.providers.map((p) => {
+      const { hasKey: _drop, ...clean } = p;
+      const typed = (p.apiKey ?? '').trim();
+      return { ...clean, apiKey: typed || byId.get(p.id)?.apiKey || '' };
+    }),
+  };
+}

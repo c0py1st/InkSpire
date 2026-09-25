@@ -19,8 +19,9 @@ export function TopBar() {
     : 0;
 
   // 必须订阅 config：曾用 getState 非响应式读取，首帧 config 未加载即误判为无密钥，横幅常驻不消失
+  // 密钥已脱敏下发，判定看 hasKey（apiKey 恒为空串）
   const noKey = !bundle && !slug && !!config && !config.mockMode
-    && !config.providers.some((p) => p.apiKey.trim());
+    && !config.providers.some((p) => p.hasKey || p.apiKey.trim());
 
   return (
     <header className="topbar">

@@ -256,7 +256,8 @@ export const useStore = create<Store>((set, get) => ({
 
   async saveConfig(cfg) {
     await api.saveSettings(cfg);
-    set({ config: cfg });
+    // 从服务端重拉而非本地留底：接口已脱敏，内存里不再长期持有明文密钥
+    set({ config: await api.getSettings() });
     get().toast('设置已保存', 'ok');
   },
 

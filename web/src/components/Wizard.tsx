@@ -16,7 +16,7 @@ export function Wizard() {
     setWizardOpen: s.setWizardOpen, openProject: s.openProject, toast: s.toast, config: s.config,
     confirmAsk: s.confirmAsk,
   })));
-  const demo = !config?.mockMode && !(config?.providers ?? []).some((p) => p.apiKey.trim());
+  const demo = !!config && !config.mockMode && !(config.providers ?? []).some((p) => p.hasKey || p.apiKey.trim());
 
   const [step, setStep] = useState(0);
   const [busy, setBusy] = useState(false);

@@ -95,6 +95,8 @@ export interface ProviderProfile {
   name: string;
   baseURL: string;       // 例：https://api.deepseek.com/v1
   apiKey: string;
+  /** 派生字段（GET /api/settings 下发）：真实密钥从不出网。保存时留空 apiKey = 保持已存密钥 */
+  hasKey?: boolean;
   model: string;
   temperature?: number;
   maxTokens?: number;

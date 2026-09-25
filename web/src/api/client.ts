@@ -93,6 +93,7 @@ export async function sse<T = unknown>(
 export const api = {
   getSettings: () => get<AppConfig>('/api/settings'),
   saveSettings: (cfg: AppConfig) => put<{ ok: true }>('/api/settings', cfg),
+  clearProviderKey: (id: string) => del<{ ok: true }>(`/api/settings/key/${encodeURIComponent(id)}`),
   testProvider: (p: unknown) => post<{ ok: boolean; message: string }>('/api/settings/test', p),
   listModels: (p: unknown) => post<{ ok: boolean; models: string[]; message?: string }>('/api/settings/models', p),
 

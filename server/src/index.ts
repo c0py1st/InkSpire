@@ -2,6 +2,7 @@ import express from 'express';
 import fs from 'node:fs';
 import path from 'node:path';
 import { DATA_DIR, ROOT, loadConfig } from './config';
+import { hostGuard } from './host-guard';
 import { purgeTrash } from './fs-store';
 import { settingsRouter } from './routes/settings';
 import { projectsRouter } from './routes/projects';
@@ -13,6 +14,8 @@ const WEB_DIST = path.join(ROOT, 'web', 'dist');
 
 const app = express();
 app.disable('x-powered-by');
+// DNS rebinding 防线：只接受指向本机的 Host（API 与静态托管同口径）
+app.use(hostGuard(PORT));
 app.use(express.json({ limit: '16mb' }));
 
 fs.mkdirSync(DATA_DIR, { recursive: true });
