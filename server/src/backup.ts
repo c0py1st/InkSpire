@@ -5,10 +5,14 @@ import { DATA_DIR } from './config';
 
 /**
  * 整本备份：把 data/<slug>/ 目录树打包成 tar.gz（纯 Node 实现，零依赖）。
- * 备份含 .backups 历史版本；.config.json 位于 DATA_DIR 根本不在打包范围内，密钥天然不外泄。
+ * 备份含 .backups 历史版本；.index 全文索引可重建故排除；.config.json 位于 DATA_DIR
+ * 根、不在打包范围内，密钥天然不外泄。
  */
 
 const BLOCK = 512;
+
+/** 不进备份的文件/目录名：全文索引缓存，恢复后首次检索自动重建 */
+const SKIP_IN_ARCHIVE = new Set(['.index']);
 
 function octField(n: number, digits: number): string {
   return n.toString(8).padStart(digits - 1, '0') + '\0';
@@ -49,6 +53,7 @@ function tarHeader(name: string, size: number, mtime: number, dir: boolean): Buf
 function tarPackDir(root: string, prefix: string, out: Buffer[]): void {
   const entries = fs.readdirSync(root, { withFileTypes: true }).sort((a, b) => a.name.localeCompare(b.name));
   for (const e of entries) {
+    if (SKIP_IN_ARCHIVE.has(e.name)) continue; // .index 全文索引可重建，不进备份
     const full = path.join(root, e.name);
     const rel = `${prefix}/${e.name}`;
     const st = fs.statSync(full);

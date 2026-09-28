@@ -1,7 +1,8 @@
 import type { Foreshadow, ToolCall, ToolSpec } from '../../../shared/src/types';
 import {
-  loadCharacters, loadForeshadows, loadOutline, readChapter, saveForeshadows, searchChapters,
+  loadCharacters, loadForeshadows, loadOutline, readChapter, saveForeshadows,
 } from '../fs-store';
+import { searchChapters } from '../chapter-index';
 import { locateChapter } from './memory';
 
 /**

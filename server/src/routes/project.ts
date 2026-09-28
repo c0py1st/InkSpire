@@ -6,8 +6,8 @@ import { countChars } from '../../../shared/src/util';
 import {
   listChapterBackups, listChapters, loadBundle, loadForeshadows, loadSummaries, readChapter, readChapterBackup,
   saveCharacters, saveChapterBody, saveOutline, saveForeshadows, saveSummaries, saveSuggestions, saveWorldview,
-  searchChapters,
 } from '../fs-store';
+import { searchChapters } from '../chapter-index';
 
 export const projectRouter = Router();
 

@@ -44,4 +44,22 @@ describe('buildBookArchive', () => {
       fs.rmSync(root, { recursive: true, force: true });
     }
   });
+
+  it('.index 全文索引不进备份（可重建缓存，不占归档体积）', () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'moge-backup-'));
+    try {
+      const slug = '带索引的书';
+      const dir = path.join(root, slug);
+      fs.mkdirSync(path.join(dir, '.index'), { recursive: true });
+      fs.writeFileSync(path.join(dir, 'meta.json'), JSON.stringify({ slug }));
+      fs.writeFileSync(path.join(dir, 'chapters.md'), 'x');
+      fs.writeFileSync(path.join(dir, '.index', 'chapters.db'), 'CACHEBLOB');
+      const { buffer } = buildBookArchive(slug, root);
+      const text = new TextDecoder().decode(gunzipSync(buffer));
+      expect(text).not.toContain('.index');
+      expect(text).not.toContain('CACHEBLOB');
+    } finally {
+      fs.rmSync(root, { recursive: true, force: true });
+    }
+  });
 });
