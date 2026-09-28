@@ -135,6 +135,27 @@ export interface ChatMsg {
   content: string;
 }
 
+/* ---------------- 对话持久化（data/<书>/chat.json） ---------------- */
+
+/** ReAct 工具轨迹的落盘形态（恢复后一律视为已完成） */
+export interface ChatStepRecord { name: string; detail: string; done: boolean }
+/** 对话提案卡的落盘形态：未决策的提案刷新后仍可点采纳/放弃 */
+export interface ChatProposalRecord {
+  id: number;
+  kind: 'chapter' | 'summary';
+  chapterId: string;
+  content: string;
+  decided: boolean;
+}
+export interface ChatMessageRecord {
+  role: 'user' | 'assistant';
+  content: string;
+  steps?: ChatStepRecord[];
+  proposals?: ChatProposalRecord[];
+  /** 落盘时间 ISO；仅记录用途，界面不显示 */
+  at: string;
+}
+
 /* ---------------- Agent 工具调用（OpenAI 兼容协议） ---------------- */
 
 /** 模型发起的一次工具调用（arguments 是 JSON 字符串，由服务端解析校验） */

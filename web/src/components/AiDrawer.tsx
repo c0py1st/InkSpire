@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useShallow } from 'zustand/react/shallow';
-import type { ConsistencyIssue, ProposalKind } from '../../../shared/src/types';
+import type { ChatMessageRecord, ChatProposalRecord, ConsistencyIssue, ProposalKind } from '../../../shared/src/types';
 import { PROPOSAL_LABELS } from '../../../shared/src/types';
 import { api } from '../api/client';
 import { useStore } from '../state/store';
@@ -8,16 +8,11 @@ import { BuDialog } from './BuDialog';
 import { Btn } from './primitives';
 import { DiffView } from './DiffView';
 
-/** ReAct 轨迹步骤：工具名 + 一行摘要 + 是否已完成 */
-interface AgentStep { name: string; detail: string; done: boolean }
-/** 对话内提案卡（agent 的 propose_* 工具产出，采纳才落盘） */
-interface ChatProposal {
-  id: number;
-  kind: 'chapter' | 'summary';
-  chapterId: string;
-  content: string;
-  decided: boolean;
-}
+/** 对话内提案卡（agent 的 propose_* 工具产出，采纳才落盘）；会话消息直接用落盘记录类型 */
+type ChatProposal = ChatProposalRecord;
+
+/** 提案卡 id 模块级自增：跨刷新/跨会话不查重（会话内唯一即可，恢复值不会与之相撞） */
+let chatPropSeq = 0;
 
 interface Proposal {
   id: number;
@@ -51,13 +46,12 @@ export function AiDrawer() {
   })));
 
   const [tab, setTab] = useState<'chat' | 'props' | 'assist'>('chat');
-  const [messages, setMessages] = useState<Array<{
-    role: 'user' | 'assistant'; content: string;
-    steps?: AgentStep[]; proposals?: ChatProposal[];
-  }>>([]);
+  const [messages, setMessages] = useState<ChatMessageRecord[]>([]);
   const [input, setInput] = useState('');
   const [chatBusy, setChatBusy] = useState(false);
   const chatCtlRef = useRef<AbortController | null>(null);
+  // 切书加载完成前不回写，避免把上一本书的尾部消息存进新书
+  const chatHydratedRef = useRef<string | null>(null);
   const [proposals, setProposals] = useState<Proposal[]>([]);
   const [issues, setIssues] = useState<'idle' | 'loading' | Issue[] | null>('idle');
   const [issuesOpen, setIssuesOpen] = useState(false);
@@ -65,11 +59,40 @@ export function AiDrawer() {
   const bodyRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    // 切换作品时清空会话
+    // 切换作品：清空会话后从盘上接续本书对话
     setMessages([]);
     setProposals([]);
     setIssues('idle');
+    chatHydratedRef.current = null;
+    if (!slug) return;
+    let alive = true;
+    void api.getChat(slug).then((recs) => {
+      if (!alive) return;
+      chatHydratedRef.current = slug;
+      // 加载期间用户已抢先发消息则不覆盖（罕见竞态，保持本地为准）
+      setMessages((cur) => (cur.length ? cur : recs));
+    }).catch(() => {
+      if (alive) chatHydratedRef.current = slug; // 读失败按空会话继续，允许后续保存
+    });
+    return () => { alive = false; };
   }, [slug]);
+
+  useEffect(() => {
+    // 消息变化防抖落盘；只写已加载完成的那本书
+    if (!slug || chatHydratedRef.current !== slug) return;
+    const t = setTimeout(() => { void api.saveChat(slug, messages).catch(() => { /* 静默：下轮变化会再试 */ }); }, 700);
+    return () => clearTimeout(t);
+  }, [messages, slug]);
+
+  async function clearChat() {
+    if (!slug) return;
+    if (!await useStore.getState().confirmAsk('清空本书的全部对话记录？（不影响正文、摘要与伏笔表）', { title: '清空对话', okLabel: '清空' })) return;
+    setMessages([]);
+    chatHydratedRef.current = slug;
+    try {
+      await api.saveChat(slug, []);
+    } catch { /* ignore */ }
+  }
 
   const scrollBottom = () => {
     if (bodyRef.current) bodyRef.current.scrollTop = bodyRef.current.scrollHeight;
@@ -127,15 +150,13 @@ export function AiDrawer() {
     toast('已采纳并保存', 'ok');
   }
 
-  /* ---------- 对话（ReAct：工具轨迹 + 提案卡 + 可中断） ---------- */
-  let propId = 0; // 仅会话内唯一即可
-  const patchLast = (fn: (m: { content: string; steps?: AgentStep[]; proposals?: ChatProposal[] }) => { content: string; steps?: AgentStep[]; proposals?: ChatProposal[] }) => {
+  /* ---------- 对话（ReAct：工具轨迹 + 提案卡 + 可中断；记录持久化到 chat.json） ---------- */
+  const patchLast = (fn: (m: ChatMessageRecord) => Partial<ChatMessageRecord>) => {
     setMessages((ms) => {
       const next = [...ms];
       const last = next[next.length - 1];
       if (last?.role !== 'assistant') return ms;
-      const patch = fn(last);
-      next[next.length - 1] = { ...last, ...patch };
+      next[next.length - 1] = { ...last, ...fn(last) };
       return next;
     });
   };
@@ -144,8 +165,10 @@ export function AiDrawer() {
     if (!slug || chatBusy || !input.trim()) return;
     const question = input.trim();
     setInput('');
-    const history = [...messages.map((m) => ({ role: m.role, content: m.content })), { role: 'user' as const, content: question }];
-    setMessages((ms) => [...ms, { role: 'assistant', content: '' }]);
+    const now = new Date().toISOString();
+    // 用户消息一并入列：刷新后的转写才有问有答，服务端摊平历史也才拿得到作者原话
+    setMessages((ms) => [...ms, { role: 'user', content: question, at: now }, { role: 'assistant', content: '', at: now }]);
+    const history = [...messages, { role: 'user' as const, content: question }].map((m) => ({ role: m.role, content: m.content }));
     setChatBusy(true);
     setTab('chat');
     const ctl = new AbortController();
@@ -179,7 +202,7 @@ export function AiDrawer() {
           if (phase === 'end' && name === 'register_foreshadow') void useStore.getState().reloadBundle();
           scrollBottom();
         } else if (obj.type === 'proposal') {
-          const p: ChatProposal = { id: ++propId, kind: obj.kind as 'chapter' | 'summary', chapterId: String(obj.chapterId), content: String(obj.content), decided: false };
+          const p: ChatProposal = { id: ++chatPropSeq, kind: obj.kind as 'chapter' | 'summary', chapterId: String(obj.chapterId), content: String(obj.content), decided: false };
           patchLast((m) => ({ content: m.content, proposals: [...(m.proposals ?? []), p] }));
           scrollBottom();
         }
@@ -209,7 +232,7 @@ export function AiDrawer() {
   }
 
   /** 采纳对话提案：正文走 saveChapter(backup)+刷新，摘要走 saveSummary */
-  async function acceptChatProposal(p: ChatProposal) {
+  async function acceptChatProposal(mi: number, p: ChatProposal) {
     if (!slug) return;
     try {
       if (p.kind === 'chapter') {
@@ -225,20 +248,21 @@ export function AiDrawer() {
         await useStore.getState().reloadBundle();
         toast('已采纳：本章摘要已写入记忆', 'ok');
       }
-      patchLast((m) => ({
-        content: m.content,
-        proposals: (m.proposals ?? []).map((x) => (x.id === p.id ? { ...x, decided: true } : x)),
-      }));
+      markProposalDecided(mi, p.id);
     } catch (err) {
       toast(`采纳失败：${(err as Error).message}`, 'error');
     }
   }
 
-  function rejectChatProposal(p: ChatProposal) {
-    patchLast((m) => ({
-      content: m.content,
-      proposals: (m.proposals ?? []).map((x) => (x.id === p.id ? { ...x, decided: true } : x)),
-    }));
+  function rejectChatProposal(mi: number, p: ChatProposal) {
+    markProposalDecided(mi, p.id);
+  }
+
+  /** 提案卡按所在消息下标定位（持久化后未处理卡可能躺在任意一条历史消息里） */
+  function markProposalDecided(mi: number, propId: number) {
+    setMessages((ms) => ms.map((m, k) => (
+      k === mi ? { ...m, proposals: (m.proposals ?? []).map((x) => (x.id === propId ? { ...x, decided: true } : x)) } : m
+    )));
   }
 
   /* ---------- 一致性检查 ---------- */
@@ -316,8 +340,8 @@ export function AiDrawer() {
                           ? <div className="cp-done">已处理</div>
                           : (
                             <div className="cp-actions">
-                              <Btn small primary onClick={() => void acceptChatProposal(p)}>采纳</Btn>
-                              <Btn small ghost onClick={() => rejectChatProposal(p)}>放弃</Btn>
+                              <Btn small primary onClick={() => void acceptChatProposal(i, p)}>采纳</Btn>
+                              <Btn small ghost onClick={() => rejectChatProposal(i, p)}>放弃</Btn>
                             </div>
                           )}
                       </div>
@@ -416,6 +440,10 @@ export function AiDrawer() {
             />
             <div className="hint">
               <span>{chapter ? '上下文：当前章节 + 设定集 + 前情摘要' : '上下文：全书设定'}</span>
+              <span style={{ flex: 1 }} />
+              {messages.length > 0 && !chatBusy && (
+                <Btn small ghost onClick={() => void clearChat()} title="清空本书对话记录（不影响正文与设定）">清空</Btn>
+              )}
               {chatBusy
                 ? <Btn small danger onClick={stopChat} title="中断本轮回答与工具调用">停止</Btn>
                 : <Btn small primary disabled={!input.trim()} onClick={() => void send()}>发送</Btn>}

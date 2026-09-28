@@ -2,8 +2,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import YAML from 'yaml';
 import {
-  Bundle, ChapterFile, ChapterStatus, CharacterCard, Foreshadow, Outline, ProjectMeta,
-  Suggestion,
+  Bundle, ChapterFile, ChapterStatus, CharacterCard, ChatMessageRecord, ChatProposalRecord, ChatStepRecord,
+  Foreshadow, Outline, ProjectMeta, Suggestion,
 } from '../../shared/src/types';
 import { countChars } from '../../shared/src/util';
 import { DATA_DIR } from './config';
@@ -211,6 +211,76 @@ export function loadForeshadows(slug: string): Foreshadow[] {
 
 export function saveForeshadows(slug: string, items: Foreshadow[]): void {
   writeJson(jfile(slug, 'foreshadows.json'), items);
+}
+
+/* ---------------- 对话持久化（chat.json） ---------------- */
+
+/** 落盘上限：超出的旧消息从头部丢弃，保证文件不会无限膨胀 */
+export const CHAT_MAX_MESSAGES = 200;
+const CHAT_MAX_CONTENT = 20000;
+const CHAT_MAX_STEPS = 12;
+const CHAT_MAX_PROPOSALS = 6;
+
+function str(v: unknown, max: number): string {
+  return typeof v === 'string' ? v.slice(0, max) : '';
+}
+
+/**
+ * 消毒前端传来的对话记录：只保留白名单字段、类型与长度全部收敛。
+ * 目的——落盘文件必然会被 agent/前端/手工三方编辑，读取时绝不信任其形状。
+ * 纯函数，不碰磁盘，单测直接喂各种畸形输入。
+ */
+export function sanitizeChatRecords(input: unknown): ChatMessageRecord[] {
+  if (!Array.isArray(input)) return [];
+  const out: ChatMessageRecord[] = [];
+  for (const raw of input) {
+    if (!raw || typeof raw !== 'object') continue;
+    const m = raw as Record<string, unknown>;
+    const role = m.role === 'user' || m.role === 'assistant' ? m.role : null;
+    const content = str(m.content, CHAT_MAX_CONTENT);
+    if (!role || !content.trim()) continue;
+    const rec: ChatMessageRecord = { role, content, at: str(m.at, 40) || new Date().toISOString() };
+
+    if (Array.isArray(m.steps)) {
+      const steps: ChatStepRecord[] = [];
+      for (const s of m.steps.slice(0, CHAT_MAX_STEPS)) {
+        if (!s || typeof s !== 'object') continue;
+        const so = s as Record<string, unknown>;
+        const name = str(so.name, 60);
+        if (!name) continue;
+        steps.push({ name, detail: str(so.detail, 200), done: so.done !== false });
+      }
+      if (steps.length) rec.steps = steps;
+    }
+    if (Array.isArray(m.proposals)) {
+      const props: ChatProposalRecord[] = [];
+      for (const p of m.proposals.slice(0, CHAT_MAX_PROPOSALS)) {
+        if (!p || typeof p !== 'object') continue;
+        const po = p as Record<string, unknown>;
+        const kind = po.kind === 'chapter' || po.kind === 'summary' ? po.kind : null;
+        const cid = str(po.chapterId, 20);
+        const body = str(po.content, 12000);
+        if (!kind || !CHAPTER_ID_RE.test(cid) || !body.trim()) continue;
+        props.push({
+          id: Number.isFinite(po.id as number) ? Number(po.id) : props.length + 1,
+          kind, chapterId: cid, content: body, decided: po.decided === true,
+        });
+      }
+      if (props.length) rec.proposals = props;
+    }
+    out.push(rec);
+  }
+  return out.length > CHAT_MAX_MESSAGES ? out.slice(out.length - CHAT_MAX_MESSAGES) : out;
+}
+
+export function loadChat(slug: string): ChatMessageRecord[] {
+  return sanitizeChatRecords(readJson<unknown>(jfile(slug, 'chat.json'), []));
+}
+
+export function saveChat(slug: string, messages: unknown): ChatMessageRecord[] {
+  const clean = sanitizeChatRecords(messages);
+  writeJson(jfile(slug, 'chat.json'), clean);
+  return clean;
 }
 
 export function loadBundle(slug: string): Bundle {

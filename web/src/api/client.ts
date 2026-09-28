@@ -1,6 +1,6 @@
 /** 与后端的全部交互。SSE 统一走 sse()。 */
 import type {
-  AppConfig, Bundle, ChapterFile, ChapterStatus, CharacterCard, ConsistencyIssue, Foreshadow, GenChapterResult, Kernel, Outline, ProjectMeta, ProposalRequest, SearchHit, Suggestion, Volume, VolumeBrief,
+  AppConfig, Bundle, ChatMessageRecord, ChapterFile, ChapterStatus, CharacterCard, ConsistencyIssue, Foreshadow, GenChapterResult, Kernel, Outline, ProjectMeta, ProposalRequest, SearchHit, Suggestion, Volume, VolumeBrief,
 } from '../../../shared/src/types';
 
 async function json<T>(res: Response): Promise<T> {
@@ -212,6 +212,9 @@ export const api = {
   ) => sse(`/api/projects/${slug}/chat`, payload, onDelta, onFinal, signal, onExtra),
   saveSummary: (slug: string, chapterId: string, summary: string) =>
     put<{ ok: true }>(`/api/projects/${slug}/summary/${chapterId}`, { summary }),
+  getChat: (slug: string) => get<ChatMessageRecord[]>(`/api/projects/${slug}/chat`),
+  saveChat: (slug: string, messages: ChatMessageRecord[]) =>
+    put<{ ok: true; count: number }>(`/api/projects/${slug}/chat`, { messages }),
   propose: (slug: string, payload: ProposalRequest, onDelta: (t: string) => void) =>
     sse(`/api/projects/${slug}/propose`, payload, onDelta),
 

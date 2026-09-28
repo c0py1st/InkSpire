@@ -4,8 +4,8 @@ import {
 } from '../../../shared/src/types';
 import { countChars } from '../../../shared/src/util';
 import {
-  listChapterBackups, listChapters, loadBundle, loadForeshadows, loadSummaries, readChapter, readChapterBackup,
-  saveCharacters, saveChapterBody, saveOutline, saveForeshadows, saveSummaries, saveSuggestions, saveWorldview,
+  listChapterBackups, listChapters, loadBundle, loadChat, loadForeshadows, loadSummaries, readChapter, readChapterBackup,
+  saveCharacters, saveChapterBody, saveChat, saveOutline, saveForeshadows, saveSummaries, saveSuggestions, saveWorldview,
 } from '../fs-store';
 import { searchChapters } from '../chapter-index';
 
@@ -124,6 +124,24 @@ projectRouter.put('/:slug/foreshadows', (req, res) => {
     const items = sanitizeForeshadows(req.body);
     saveForeshadows(req.params.slug, items);
     res.json({ ok: true, count: items.length });
+  } catch (err) {
+    res.status(400).json({ error: (err as Error).message });
+  }
+});
+
+/** 对话记录：整读整写（前端防抖落盘），服务端消毒后回存 */
+projectRouter.get('/:slug/chat', (req, res) => {
+  try {
+    res.json(loadChat(req.params.slug));
+  } catch (err) {
+    res.status(404).json({ error: (err as Error).message });
+  }
+});
+
+projectRouter.put('/:slug/chat', (req, res) => {
+  try {
+    const saved = saveChat(req.params.slug, (req.body as { messages?: unknown })?.messages);
+    res.json({ ok: true, count: saved.length });
   } catch (err) {
     res.status(400).json({ error: (err as Error).message });
   }
