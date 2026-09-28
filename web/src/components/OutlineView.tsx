@@ -1,12 +1,22 @@
 import { useState } from 'react';
 import { useShallow } from 'zustand/react/shallow';
-import type { ChapterStatus, Outline } from '../../../shared/src/types';
+import type { ChapterStatus, Outline, Volume } from '../../../shared/src/types';
+import { recapFingerprint } from '../../../shared/src/types';
 import { chapterId as mkChapterId } from '../../../shared/src/util';
 import { api } from '../api/client';
 import { useStore } from '../state/store';
 import { BuDialog } from './BuDialog';
 import { Btn, Field } from './primitives';
 import { ForeshadowPanel } from './ForeshadowPanel';
+
+/** 卷回本状态：新鲜可顶替逐章 / 过期需重压 / 未归档齐 / 尚无回本 */
+type RecapState = 'fresh' | 'stale' | 'incomplete' | 'none';
+function recapStateOf(vol: Volume, summaries: Record<string, string>, recap?: { fingerprint: string }): RecapState {
+  const archived = vol.chapters.every((c) => (summaries[c.id] ?? '').trim());
+  if (!archived) return 'incomplete';
+  if (!recap) return 'none';
+  return recap.fingerprint === recapFingerprint(vol, summaries) ? 'fresh' : 'stale';
+}
 
 export function OutlineView() {
   const { bundle, persistOutline, updateOutlineLocal, toast, openChapter, setView, reloadBundle } =
@@ -15,6 +25,7 @@ export function OutlineView() {
       toast: s.toast, openChapter: s.openChapter, setView: s.setView, reloadBundle: s.reloadBundle,
     })));
   const [refining, setRefining] = useState<number | null>(null);
+  const [recapping, setRecapping] = useState<string | null>(null);
   const [confirmVol, setConfirmVol] = useState<number | null>(null);
   /** 卷抽屉：默认全部收起，按卷 id 记录展开状态（用 id 而非下标，拖动排序后不错位） */
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
@@ -110,6 +121,21 @@ export function OutlineView() {
     }
   }
 
+  async function buildRecap(volId: string) {
+    setRecapping(volId);
+    try {
+      const out = await api.buildVolumeRecap(bundle!.meta.slug, volId);
+      await reloadBundle();
+      if (out.status === 'incomplete') toast(`本卷还有 ${out.total! - out.done!} 章未归档，暂不能压回本`, 'error');
+      else if (out.status === 'fresh') toast('卷回本已是最新', 'ok');
+      else toast('卷回本已生成', 'ok');
+    } catch (err) {
+      toast((err as Error).message, 'error');
+    } finally {
+      setRecapping(null);
+    }
+  }
+
   return (
     <div className="center-scroll">
       <div className="pane-pad outline-head">
@@ -159,6 +185,31 @@ export function OutlineView() {
               <Btn small disabled={refining !== null} onClick={() => setConfirmVol(vi)} title="AI 会重写本卷每一章的 beat，已有正文不会被删除">
                 {refining === vi ? '细化中…' : 'AI 细化本卷'}
               </Btn>
+              {(() => {
+                const st = recapStateOf(vol, bundle.summaries, bundle.recaps?.[vol.id]);
+                if (st === 'incomplete') return null; // 未归档齐：回本无从压起，不显示
+                const rc = bundle.recaps?.[vol.id];
+                if (st === 'fresh' && rc) {
+                  return (
+                    <span className="recap-chip" title={`悬停看回本全文：\n${rc.recap}`}>
+                      卷回本✓
+                      <button
+                        className="icon-btn" style={{ marginLeft: 2 }}
+                        title="重新压缩本卷回本（章摘要变动后需要）"
+                        disabled={recapping !== null}
+                        onClick={() => void buildRecap(vol.id)}
+                      >{recapping === vol.id ? '…' : '↻'}</button>
+                    </span>
+                  );
+                }
+                return (
+                  <Btn
+                    small disabled={recapping !== null}
+                    onClick={() => void buildRecap(vol.id)}
+                    title="把本卷逐章摘要压成一条「卷回本」：续写后续卷时用它顶替整卷细摘要，省上下文又不丢长程记忆"
+                  >{recapping === vol.id ? '压缩中…' : st === 'stale' ? '回本已过期·重压' : '生成卷回本'}</Btn>
+                );
+              })()}
             </div>
             <div className="vol-summary">
               <textarea

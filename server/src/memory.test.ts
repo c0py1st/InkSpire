@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import type { Foreshadow, Outline } from '../../shared/src/types';
+import type { Foreshadow, Outline, VolumeRecap } from '../../shared/src/types';
+import { recapFingerprint } from '../../shared/src/types';
 import { buildSummariesText, flattenChapterIds, foreshadowText, locateChapter, nextChapterIds, openForeshadowListText } from './ai/memory';
 
 function fs_(over: Partial<Foreshadow>): Foreshadow {
@@ -73,6 +74,77 @@ describe('buildSummariesText', () => {
     const text = buildSummariesText(o, { v01c001: '一', v01c002: '二' }, 'v01c003');
     expect(text).toContain('一');
     expect(text).toContain('二');
+  });
+});
+
+describe('buildSummariesText 卷回本分层', () => {
+  const freshRecap = (o: Outline, volId: string, summaries: Record<string, string>, recap: string): VolumeRecap => {
+    const vol = o.volumes.find((v) => v.id === volId)!;
+    return { recap, fingerprint: recapFingerprint(vol, summaries), updatedAt: 'x' };
+  };
+
+  it('目标前已完成卷有新鲜回本 → 一条顶替全卷逐章', () => {
+    const o = outline();
+    const summaries = { v01c001: '甲乙丙丁戊己', v01c002: '第二章正文', v01c003: '第三章正文' };
+    const recaps = { v01: freshRecap(o, 'v01', summaries, '第一卷收束：主角查到铜牌来历') };
+    const text = buildSummariesText(o, summaries, 'v02c001', recaps);
+    expect(text).toContain('【卷回本·卷一】第一卷收束');
+    // 整卷逐章被顶替，不再出现
+    expect(text).not.toContain('v01-第1章');
+    expect(text).not.toContain('甲乙丙丁戊己');
+  });
+
+  it('回本指纹过期（章摘要变动）→ 自动回落逐章，绝不喂旧回本', () => {
+    const o = outline();
+    const summaries = { v01c001: '改过的第一章', v01c002: '二', v01c003: '三' };
+    const stale: VolumeRecap = { recap: '很久以前的回本', fingerprint: 'deadbeef', updatedAt: 'x' };
+    const text = buildSummariesText(o, summaries, 'v02c001', { v01: stale });
+    expect(text).not.toContain('很久以前');
+    expect(text).toContain('《v01-第1章》：改过的第一章');
+  });
+
+  it('当前卷一律逐章细注入（即便该卷此前误留有回本也不用）', () => {
+    const o = outline();
+    const summaries = { v01c001: '一', v01c002: '二', v02c001: '五' };
+    // 目标在 v01c003：v01 是当前卷，不得用回本；只出 v01c001/002 逐章
+    const recaps = { v01: freshRecap(o, 'v01', summaries, '不应出现的本卷回本') };
+    const text = buildSummariesText(o, summaries, 'v01c003', recaps);
+    expect(text).not.toContain('不应出现');
+    expect(text).toContain('《v01-第1章》：一');
+    expect(text).toContain('《v01-第2章》：二');
+  });
+
+  it('不传 recaps 与旧行为一致（向后兼容）', () => {
+    const o = outline();
+    const summaries = { v01c001: '一', v02c001: '五' };
+    const withUndef = buildSummariesText(o, summaries, 'v02c002');
+    const legacy = buildSummariesText(o, summaries, 'v02c002', undefined);
+    expect(withUndef).toBe(legacy);
+    expect(withUndef).toContain('《v01-第1章》：一');
+  });
+
+  it('全书问答（目标不在大纲）→ 所有新鲜回本都参与压缩', () => {
+    const o = outline();
+    const summaries = { v01c001: '一', v01c002: '二', v01c003: '三', v02c001: '四', v02c002: '五' };
+    const recaps = {
+      v01: freshRecap(o, 'v01', summaries, '卷一回本'),
+      v02: freshRecap(o, 'v02', summaries, '卷二回本'),
+    };
+    const text = buildSummariesText(o, summaries, 'nope', recaps);
+    expect(text).toContain('【卷回本·卷一】卷一回本');
+    expect(text).toContain('【卷回本·卷二】卷二回本');
+    expect(text).not.toContain('《v01-第1章》');
+  });
+
+  it('recapFingerprint 对摘要内容敏感、对顺序敏感、稳定可复现', () => {
+    const o = outline();
+    const s1 = { v01c001: 'a', v01c002: 'b', v01c003: 'c' };
+    const vol = o.volumes.find((v) => v.id === 'v01')!;
+    expect(recapFingerprint(vol, s1)).toBe(recapFingerprint(vol, s1)); // 稳定
+    expect(recapFingerprint(vol, s1)).not.toBe(recapFingerprint(vol, { ...s1, v01c002: '改' })); // 内容敏感
+    expect(recapFingerprint(vol, s1)).not.toBe(recapFingerprint(vol, { v01c001: 'b', v01c002: 'a', v01c003: 'c' })); // 顺序敏感
+    // 缺失摘要与空串同签名（未归档章视作空）
+    expect(recapFingerprint(vol, { v01c001: 'a', v01c003: 'c' })).toBe(recapFingerprint(vol, { v01c001: 'a', v01c002: '', v01c003: 'c' }));
   });
 });
 

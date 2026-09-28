@@ -212,6 +212,9 @@ export const api = {
   ) => sse(`/api/projects/${slug}/chat`, payload, onDelta, onFinal, signal, onExtra),
   saveSummary: (slug: string, chapterId: string, summary: string) =>
     put<{ ok: true }>(`/api/projects/${slug}/summary/${chapterId}`, { summary }),
+  buildVolumeRecap: (slug: string, volumeId: string) =>
+    post<{ status: 'fresh' | 'generated' | 'incomplete'; done?: number; total?: number; error?: string }>(
+      `/api/projects/${slug}/volume-recap/${volumeId}`, {}),
   getChat: (slug: string) => get<ChatMessageRecord[]>(`/api/projects/${slug}/chat`),
   saveChat: (slug: string, messages: ChatMessageRecord[]) =>
     put<{ ok: true; count: number }>(`/api/projects/${slug}/chat`, { messages }),

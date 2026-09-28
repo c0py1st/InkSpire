@@ -1,6 +1,7 @@
 import type {
-  ChapterBeat, CharacterCard, Foreshadow, Outline,
+  ChapterBeat, CharacterCard, Foreshadow, Outline, VolumeRecap,
 } from '../../../shared/src/types';
+import { recapFingerprint } from '../../../shared/src/types';
 import type { ChapterContext } from './prompts/prose';
 
 /**
@@ -27,27 +28,49 @@ export function buildSummariesText(
   outline: Outline,
   summaries: Record<string, string>,
   upToChapterId: string,
+  recaps?: Record<string, VolumeRecap>,
 ): string {
+  // 分层前情：目标之前的整卷若已有"新鲜"卷回本，用一条粗粒度回顾顶替该卷全部逐章摘要；
+  // 当前卷、以及回本缺失/过期（指纹不符）的卷，仍逐章细粒度注入。
+  // 不传 recaps 时退回纯逐章，与旧行为逐字节一致（向后兼容）。
   const lines: string[] = [];
   let budget = SUMMARY_BUDGET_CHARS;
-  // 从最后一章向前收集，保证最近章节的摘要在预算内
-  const ordered: Array<{ title: string; text: string; volumeTitle: string }> = [];
-  // 只收集"本章之前"的摘要：命中 upTo 后必须连外层卷循环一起停，
-  // 否则后续卷的摘要会被当"前情"注入（回头重写旧章时造成剧透污染）
+  // 先按阅读顺序生成"条目"（章 或 卷回本），再从最近往旧填充预算——
+  // 与旧实现一样保证最近章节/最新卷回本优先留在预算内。
+  type Entry = { kind: 'ch'; label: string; text: string } | { kind: 'recap'; label: string; text: string };
+  const ordered: Entry[] = [];
   let reached = false;
   for (const vol of outline.volumes) {
     if (reached) break;
-    for (const ch of vol.chapters) {
-      if (ch.id === upToChapterId) { reached = true; break; }
-      const s = summaries[ch.id];
-      if (s) ordered.push({ title: ch.title, text: s, volumeTitle: vol.title });
+    const targetInVol = vol.chapters.some((c) => c.id === upToChapterId);
+    if (targetInVol) {
+      // 目标章所在卷：只注入该章之前的逐章摘要，命中即停外层（防后续卷/剧透）
+      for (const ch of vol.chapters) {
+        if (ch.id === upToChapterId) { reached = true; break; }
+        const s = summaries[ch.id];
+        if (s) ordered.push({ kind: 'ch', label: ch.title, text: s });
+      }
+      break;
+    }
+    // 整卷都在目标之前：新鲜回本则一条顶替全卷
+    const rc = recaps?.[vol.id];
+    if (rc && rc.fingerprint === recapFingerprint(vol, summaries)) {
+      ordered.push({ kind: 'recap', label: vol.title, text: rc.recap });
+    } else {
+      for (const ch of vol.chapters) {
+        const s = summaries[ch.id];
+        if (s) ordered.push({ kind: 'ch', label: ch.title, text: s });
+      }
     }
   }
   for (let i = ordered.length - 1; i >= 0; i--) {
     if (budget <= 0) break;
     const item = ordered[i];
     const text = item.text.length > budget ? item.text.slice(0, budget) + '…' : item.text;
-    lines.unshift(`《${item.title}》：${text}`);
+    const line = item.kind === 'recap'
+      ? `【卷回本·${item.label}】${text}`
+      : `《${item.label}》：${text}`;
+    lines.unshift(line);
     budget -= text.length;
   }
   return lines.join('\n');
@@ -77,6 +100,7 @@ export function buildChapterContext(args: {
   characters: CharacterCard[];
   worldview: string;
   summaries: Record<string, string>;
+  recaps?: Record<string, VolumeRecap>;  // 已完成卷的卷回本（分层记忆）
   prevChapterContent?: string;   // 前一章全文（这里只取结尾）
   foreshadows?: Foreshadow[];    // 伏笔登记表
   currentVolumeOnlyCast?: boolean;
@@ -105,7 +129,7 @@ export function buildChapterContext(args: {
     volumeTitle: vol.title,
     volumeSummary: vol.summary,
     prevTail,
-    summaries: buildSummariesText(outline, args.summaries, chapterId),
+    summaries: buildSummariesText(outline, args.summaries, chapterId, args.recaps),
     foreshadow: foreshadowText(outline, args.foreshadows ?? [], chapterId),
     cast,
     mentionOnly: mentionOnlyAll,

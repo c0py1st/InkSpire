@@ -3,7 +3,7 @@ import path from 'node:path';
 import YAML from 'yaml';
 import {
   Bundle, ChapterFile, ChapterStatus, CharacterCard, ChatMessageRecord, ChatProposalRecord, ChatStepRecord,
-  Foreshadow, Outline, ProjectMeta, Suggestion,
+  Foreshadow, Outline, ProjectMeta, Suggestion, VolumeRecap,
 } from '../../shared/src/types';
 import { countChars } from '../../shared/src/util';
 import { DATA_DIR } from './config';
@@ -201,6 +201,34 @@ export function loadSummaries(slug: string): Record<string, string> {
   return readJson<Record<string, string>>(jfile(slug, 'summaries.json'), {});
 }
 
+/* ---------------- 卷回本（recaps.json，可重建缓存） ---------------- */
+
+/** 消毒：只收 {recap,fingerprint,updatedAt} 三字段字符串对象，其余丢弃 */
+export function sanitizeRecaps(input: unknown): Record<string, VolumeRecap> {
+  const out: Record<string, VolumeRecap> = {};
+  if (!input || typeof input !== 'object' || Array.isArray(input)) return out;
+  for (const [volId, raw] of Object.entries(input as Record<string, unknown>)) {
+    if (!/^v\d{2,}$/.test(volId) || !raw || typeof raw !== 'object') continue;
+    const r = raw as Record<string, unknown>;
+    const recap = typeof r.recap === 'string' ? r.recap.slice(0, 4000) : '';
+    const fingerprint = typeof r.fingerprint === 'string' ? r.fingerprint.slice(0, 32) : '';
+    if (!recap.trim() || !fingerprint) continue;
+    out[volId] = {
+      recap, fingerprint,
+      updatedAt: typeof r.updatedAt === 'string' ? r.updatedAt.slice(0, 40) : new Date().toISOString(),
+    };
+  }
+  return out;
+}
+
+export function loadRecaps(slug: string): Record<string, VolumeRecap> {
+  return sanitizeRecaps(readJson<unknown>(jfile(slug, 'recaps.json'), {}));
+}
+
+export function saveRecaps(slug: string, recaps: Record<string, VolumeRecap>): void {
+  writeJson(jfile(slug, 'recaps.json'), recaps);
+}
+
 export function loadSuggestions(slug: string): Suggestion[] {
   return readJson<Suggestion[]>(jfile(slug, 'suggestions.json'), []);
 }
@@ -291,6 +319,7 @@ export function loadBundle(slug: string): Bundle {
     characters: loadCharacters(slug),
     worldview: loadWorldview(slug),
     summaries: loadSummaries(slug),
+    recaps: loadRecaps(slug),
     suggestions: loadSuggestions(slug),
     foreshadows: loadForeshadows(slug),
   };

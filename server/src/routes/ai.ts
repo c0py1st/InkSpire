@@ -19,9 +19,11 @@ import { chatPrompt } from '../ai/prompts/chat';
 import { summaryPrompt } from '../ai/prompts/summary';
 import { consistencyPrompt } from '../ai/prompts/consistency';
 import {
-  getMeta, listChapters, loadBundle, loadOutline, loadSuggestions, readChapter,
-  saveChapterBody, saveOutline, saveSuggestions, saveSummaries,
+  getMeta, listChapters, loadBundle, loadOutline, loadRecaps, loadSummaries, loadSuggestions, readChapter,
+  saveChapterBody, saveOutline, saveRecaps, saveSuggestions, saveSummaries,
 } from '../fs-store';
+import { recapFingerprint } from '../../../shared/src/types';
+import { recapPrompt } from '../ai/prompts/recap';
 import { countChars, ensureParagraphIndent } from '../../../shared/src/util';
 
 export const aiRouter = Router();
@@ -240,6 +242,7 @@ async function runOneChapter(task: BgGenTask, item: QueueItem): Promise<ChapterR
       characters: bundle.characters,
       worldview: bundle.worldview,
       summaries: bundle.summaries,
+      recaps: bundle.recaps,
       prevChapterContent: prevContent,
       foreshadows: bundle.foreshadows,
     });
@@ -477,6 +480,42 @@ aiRouter.get('/projects/:slug/generation-progress/:chapterId', (req, res) => {
   });
 });
 
+/**
+ * 确保某卷的卷回本存在且新鲜。三种结果：
+ * - 'fresh'：指纹已匹配，无需重算；
+ * - 'incomplete'：该卷尚未逐章归档齐（回本无从压起），附进度；
+ * - 'generated'：调辅助模型压出回本并落盘。
+ * 指纹由「该卷有序章摘要」算出——任一章摘要变动即失效，下次自动重压。
+ */
+export async function ensureVolumeRecap(
+  slug: string, volumeId: string,
+): Promise<{ status: 'fresh' } | { status: 'incomplete'; done: number; total: number } | { status: 'generated' }> {
+  const outline = loadOutline(slug);
+  const vol = outline?.volumes.find((v) => v.id === volumeId);
+  if (!vol || !vol.chapters.length) return { status: 'incomplete', done: 0, total: vol?.chapters.length ?? 0 };
+  const summaries = loadSummaries(slug);
+  const done = vol.chapters.filter((c) => (summaries[c.id] ?? '').trim()).length;
+  if (done < vol.chapters.length) return { status: 'incomplete', done, total: vol.chapters.length };
+  const fp = recapFingerprint(vol, summaries);
+  const recaps = loadRecaps(slug);
+  if (recaps[volumeId]?.fingerprint === fp) return { status: 'fresh' };
+  const cfg = loadConfig();
+  const prompt = recapPrompt({
+    volumeTitle: vol.title,
+    volumeSummary: vol.summary,
+    chapters: vol.chapters.map((c) => ({ title: c.title, summary: summaries[c.id] })),
+  });
+  const raw = await chatOnce(cfg, assistProfile(cfg), [
+    { role: 'system', content: prompt.system },
+    { role: 'user', content: prompt.user },
+  ], { kind: 'json', temperature: 0.3, maxTokens: 2000 });
+  const parsed = extractJson<{ recap: string }>(raw);
+  if (!parsed.recap?.trim()) throw new Error('卷回本生成为空');
+  recaps[volumeId] = { recap: parsed.recap.trim(), fingerprint: fp, updatedAt: new Date().toISOString() };
+  saveRecaps(slug, recaps);
+  return { status: 'generated' };
+}
+
 /** 章节完稿：生成摘要、探测新设定，写入 suggestions */
 /**
  * 章节归档核心（路由与连写队列共用）：
@@ -567,6 +606,14 @@ export async function finalizeChapterCore(
   const all = [...kept, ...added, ...worldAdded, ...stateAdded].slice(-50);
   saveSuggestions(slug, all);
 
+  // 本卷就此归档齐 → 顺带压一条卷回本（每卷至多一次模型调用）。
+  // 失败只记日志：回本缺失时注入自动退回逐章摘要，不该连累归档主流程。
+  try {
+    await ensureVolumeRecap(slug, loc.volume.id);
+  } catch (err) {
+    console.error(`[recap] 卷回本生成失败（${loc.volume.id}）：`, (err as Error).message);
+  }
+
   return { summary: parsed.summary, newSuggestions: [...added, ...worldAdded, ...stateAdded] };
 }
 
@@ -578,6 +625,17 @@ aiRouter.post('/projects/:slug/finalize-chapter/:chapterId', async (req, res) =>
     const msg = (err as Error).message;
     const status = msg.includes('还没有大纲') || msg === '正文为空' ? 400 : 500;
     res.status(status).json({ error: msg });
+  }
+});
+
+/** 手动（重）建某卷卷回本：归档时自动压过，这里供"整卷补齐旧章后回填""强制重压" */
+aiRouter.post('/projects/:slug/volume-recap/:volumeId', async (req, res) => {
+  const { slug, volumeId } = req.params;
+  try {
+    const out = await ensureVolumeRecap(slug, volumeId);
+    res.json(out);
+  } catch (err) {
+    res.status(500).json({ error: (err as Error).message });
   }
 });
 
@@ -689,7 +747,7 @@ aiRouter.post('/projects/:slug/chat', (req, res) => {
     outline: outline ?? { premise: '', genre: '', coreConflict: '', endingVision: '', styleGuide: '', volumes: [] },
     worldview: bundle.worldview,
     characters: charsText,
-    summaries: outline ? buildSummariesText(outline, bundle.summaries, chapterId ?? '') : '',
+    summaries: outline ? buildSummariesText(outline, bundle.summaries, chapterId ?? '', bundle.recaps) : '',
     foreshadows: outline
       ? (chapterId
         ? foreshadowText(outline, bundle.foreshadows, chapterId)
@@ -772,7 +830,7 @@ aiRouter.post('/projects/:slug/check-consistency/:chapterId', async (req, res) =
       content,
       beat: loc.chapter.beat,
       characters: bundle.characters,
-      summaries: buildSummariesText(outline, bundle.summaries, chapterId),
+      summaries: buildSummariesText(outline, bundle.summaries, chapterId, bundle.recaps),
       worldview: bundle.worldview,
       foreshadows: foreshadowText(outline, bundle.foreshadows, chapterId),
     });

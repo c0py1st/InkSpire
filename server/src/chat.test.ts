@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { CHAT_MAX_MESSAGES, sanitizeChatRecords } from './fs-store';
+import { CHAT_MAX_MESSAGES, sanitizeChatRecords, sanitizeRecaps } from './fs-store';
 
 describe('sanitizeChatRecords（对话落盘消毒）', () => {
   it('非数组一律空', () => {
@@ -64,5 +64,31 @@ describe('sanitizeChatRecords（对话落盘消毒）', () => {
   it('往返幂等：消毒结果再消毒不变', () => {
     const once = sanitizeChatRecords([{ role: 'user', content: 'hi', steps: [{ name: 'x', detail: 'd', done: true }] }]);
     expect(sanitizeChatRecords(once)).toEqual(once);
+  });
+});
+
+describe('sanitizeRecaps（卷回本落盘消毒）', () => {
+  it('非对象/数组一律空', () => {
+    expect(sanitizeRecaps(undefined)).toEqual({});
+    expect(sanitizeRecaps([])).toEqual({});
+    expect(sanitizeRecaps('x')).toEqual({});
+  });
+
+  it('保留合法 volumeId，丢弃非法键与缺字段项', () => {
+    const out = sanitizeRecaps({
+      v01: { recap: '卷一回本', fingerprint: 'abcd1234', updatedAt: '2026-01-01T00:00:00.000Z' },
+      c01: { recap: 'x', fingerprint: 'y' },        // 非法 volumeId
+      v02: { recap: '   ', fingerprint: 'z' },       // 空 recap
+      v03: { recap: '有文', fingerprint: '' },       // 缺指纹
+      v04: '字符串',                                  // 非对象
+    });
+    expect(Object.keys(out)).toEqual(['v01']);
+    expect(out.v01.recap).toBe('卷一回本');
+  });
+
+  it('多卷号 v100 等长格式也接受', () => {
+    const out = sanitizeRecaps({ v100: { recap: '百', fingerprint: 'f1' } });
+    expect(out.v100).toMatchObject({ recap: '百', fingerprint: 'f1' });
+    expect(out.v100.updatedAt).toBeTruthy(); // 缺省补时间
   });
 });

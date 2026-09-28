@@ -97,6 +97,11 @@ function yieldMockJson(promptHint: string): string {
       ],
     });
   }
+  if (promptHint.includes('卷回本') || promptHint.includes('未决事项')) {
+    return JSON.stringify({
+      recap: '【演示回本】本卷李慎由城门浮尸入手，与秦伯验尸锁定勒杀伪冻毙，线索牵至城北旧盐仓与周主簿；至卷末其右手带伤、暂压尸格、收到匿名"撤呈"警告，已与周主簿正面为敌。未决事项：盐仓账目与铜牌来历未查清；匿名警告来源不明；秦伯安危存疑。',
+    });
+  }
   if (promptHint.includes('剧情摘要') || promptHint.includes('本章摘要')) {
     return JSON.stringify({
       summary: '【演示摘要】李慎查验盐车命案发现致命伤不在车轮而在咽喉，锁定第一嫌疑人周主簿，同时收到匿名警告信。',

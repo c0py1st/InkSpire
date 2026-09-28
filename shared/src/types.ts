@@ -119,8 +119,34 @@ export interface Bundle {
   characters: CharacterCard[];
   worldview: string;
   summaries: Record<string, string>;   // chapterId -> 摘要
+  recaps: Record<string, VolumeRecap>; // volumeId -> 卷回本（可重建缓存）
   suggestions: Suggestion[];
   foreshadows: Foreshadow[];
+}
+
+/**
+ * 卷回本：已完成卷的压缩回顾，长程记忆的粗粒度层。
+ * fingerprint 由该卷全部章摘要算出——章摘要一变即失效，
+ * 注入时自动退回逐章摘要，绝不拿过期回本当事实。
+ */
+export interface VolumeRecap {
+  recap: string;
+  fingerprint: string;
+  updatedAt: string;
+}
+
+/**
+ * 卷摘要指纹：对该卷「有序 (章id, 章摘要)」序列做 FNV-1a。
+ * 纯函数、跨端一致——前端据此标注"卷回本已过期"，后端据此决定注入回本还是逐章。
+ */
+export function recapFingerprint(vol: Volume, summaries: Record<string, string>): string {
+  let h = 0x811c9dc5;
+  const s = vol.chapters.map((c) => `${c.id}\u0000${summaries[c.id] ?? ''}`).join('\u0001');
+  for (let i = 0; i < s.length; i++) {
+    h ^= s.charCodeAt(i);
+    h = Math.imul(h, 0x01000193) >>> 0;
+  }
+  return h.toString(16).padStart(8, '0');
 }
 
 export interface ChapterFile {
