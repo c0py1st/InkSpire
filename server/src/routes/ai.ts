@@ -8,7 +8,7 @@ import { chatOnce, streamChat, type ChatMessage } from '../ai/provider';
 import { TOOL_SPECS, executeTool } from '../ai/tools';
 import { extractJson } from '../ai/json';
 import { Sse, abortOnClose } from '../ai/sse';
-import { buildChapterContext, buildSummariesText, foreshadowText, locateChapter, nextChapterIds, openForeshadowListText, selectionContext } from '../ai/memory';
+import { buildChapterContext, buildSummariesText, flattenChapterIds, foreshadowText, locateChapter, nextChapterIds, openForeshadowListText, selectionContext } from '../ai/memory';
 import { kernelPrompt } from '../ai/prompts/kernel';
 import { volumesPrompt } from '../ai/prompts/volumes';
 import { beatsPrompt } from '../ai/prompts/beats';
@@ -23,10 +23,11 @@ import {
   saveChapterBody, saveOutline, saveRecaps, saveSuggestions, saveSummaries,
 } from '../fs-store';
 import { recapFingerprint, stateAtChapter } from '../../../shared/src/types';
-import { recordUsage } from '../cache-stats';
+import { loadCacheStats, recordUsage } from '../cache-stats';
 import { l0Check, looksAncientSetting, type L0Finding } from '../../../shared/src/l0';
 import { loadL0Report, saveChapterL0 } from '../l0-report';
 import { verifyIssueQuotes } from '../quote-verify';
+import { buildHealthReport } from '../health-aggregate';
 import { recapPrompt } from '../ai/prompts/recap';
 import { countChars, ensureParagraphIndent } from '../../../shared/src/util';
 
@@ -687,6 +688,50 @@ aiRouter.post('/projects/:slug/l0/:chapterId', (req, res) => {
 aiRouter.get('/projects/:slug/l0', (req, res) => {
   try {
     res.json(loadL0Report(req.params.slug));
+  } catch (err) {
+    res.status(400).json({ error: (err as Error).message });
+  }
+});
+
+/** 全书体检报告：纯统计 + 已有缓存汇总，零模型调用（冲突率类检查属一致性职责） */
+aiRouter.get('/projects/:slug/health', (req, res) => {
+  try {
+    const { slug } = req.params;
+    const bundle = loadBundle(slug);
+    if (!bundle.outline) return res.status(400).json({ error: '本书还没有大纲' });
+    res.json(buildHealthReport({
+      outline: bundle.outline,
+      summaries: bundle.summaries,
+      foreshadows: bundle.foreshadows,
+      characters: bundle.characters,
+      bodies: listChapters(slug).map((c) => ({ id: c.id, content: c.content })),
+      l0: loadL0Report(slug),
+      usage: loadCacheStats(slug),
+    }));
+  } catch (err) {
+    res.status(400).json({ error: (err as Error).message });
+  }
+});
+
+/** 全书 L0 重跑（纯代码零成本）：逐章预检并刷新缓存 */
+aiRouter.post('/projects/:slug/l0-rerun', (req, res) => {
+  try {
+    const { slug } = req.params;
+    const outline = loadOutline(slug);
+    if (!outline) return res.status(400).json({ error: '本书还没有大纲' });
+    const order = flattenChapterIds(outline);
+    const existing = new Set(listChapters(slug).map((c) => c.id));
+    let checked = 0; let flagged = 0; let high = 0;
+    for (const cid of order) {
+      if (!existing.has(cid)) continue; // 无正文的章不检
+      checked++;
+      try {
+        const findings = runL0ForChapter(slug, cid, outline);
+        if (findings.length) flagged++;
+        high += findings.filter((f) => f.severity === 'high').length;
+      } catch { /* 单章失败不拖垮全书 */ }
+    }
+    res.json({ checked, flagged, high });
   } catch (err) {
     res.status(400).json({ error: (err as Error).message });
   }

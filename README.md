@@ -79,6 +79,7 @@ data/
     chapters/.backups/    # 大幅删改前的自动备份
     .index/chapters.db    # 全文检索索引（可重建缓存，不进备份；可随时删）
     .index/cache-stats.json # 模型调用 usage 与前缀缓存命中统计（可重建观测缓存，不进备份）
+    .index/l0-report.json # 各章最近一次 L0 预检结果（可重建，体检面板消费）
 ```
 
 ## Agent 架构（对话工具层）

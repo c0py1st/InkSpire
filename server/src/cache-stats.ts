@@ -1,28 +1,16 @@
 import fs from 'node:fs';
 import { indexFile, readIndexJsonRaw, writeIndexJson } from './fs-store';
 import { parseUsage, type UsageDelta } from './ai/usage';
+import type { CacheCounters, CacheStatEntry, CacheStats } from '../../shared/src/types';
 
 /**
  * 前缀缓存命中率统计（观测面）：data/<书>/.index/cache-stats.json
  * 定位与 .index/chapters.db 一致——可重建缓存，删了不丢任何数据；
  * 备份（backup.ts 的 SKIP_IN_ARCHIVE）与导出都不带它。
+ * 线上形状（CacheStats 等）定义在 shared，供体检面板前后端共用。
  */
 
-export interface CacheCounters { calls: number; prompt: number; cached: number; miss: number }
-export interface CacheStatEntry {
-  at: string;               // ISO 时间
-  source: string;           // prose | prose-cont | summary | recap | chat
-  chapterId?: string;
-  prompt: number;
-  cached: number;
-  miss: number;
-}
-export interface CacheStats {
-  version: 1;
-  totals: CacheCounters;
-  bySource: Record<string, CacheCounters>;
-  recent: CacheStatEntry[];
-}
+export type { CacheCounters, CacheStatEntry, CacheStats };
 
 export const CACHE_RECENT_MAX = 40;
 export const CACHE_SOURCES_MAX = 16;

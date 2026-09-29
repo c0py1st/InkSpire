@@ -316,6 +316,40 @@ export const PROPOSAL_LABELS: Record<ProposalKind, string> = {
   custom: '自定义',
 };
 
+/* ---------------- 体检与用量（前后端共用的线上形状） ---------------- */
+
+export interface CacheCounters { calls: number; prompt: number; cached: number; miss: number }
+export interface CacheStatEntry {
+  at: string;               // ISO 时间
+  source: string;           // prose | prose-cont | summary | recap | chat | beats | consistency
+  chapterId?: string;
+  prompt: number;
+  cached: number;
+  miss: number;
+}
+/** 模型调用 usage 与前缀缓存命中统计（data/<书>/.index/cache-stats.json，可重建观测缓存） */
+export interface CacheStats {
+  version: 1;
+  totals: CacheCounters;
+  bySource: Record<string, CacheCounters>;
+  recent: CacheStatEntry[];
+}
+
+/** 体检报告：GET /api/projects/:slug/health 的响应 */
+export interface HealthReport {
+  progress: { total: number; archived: number; totalWords: number };
+  foreshadow: {
+    open: number; resolved: number; abandoned: number;
+    overdue: Array<{ id: string; content: string; payoffChapterId: string; payoffTitle: string }>;
+  };
+  appearances: Array<{ name: string; role: string; chapters: number; stateNodes: number }>;
+  l0: {
+    high: number; medium: number; low: number;
+    chapters: Array<{ chapterId: string; title: string; high: number; medium: number; low: number }>;
+  };
+  usage: CacheStats;
+}
+
 /* ---------------- 内置预设 ---------------- */
 
 export const PROVIDER_PRESETS = [

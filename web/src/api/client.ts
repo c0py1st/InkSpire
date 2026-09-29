@@ -1,6 +1,6 @@
 /** 与后端的全部交互。SSE 统一走 sse()。 */
 import type {
-  AppConfig, Bundle, ChatMessageRecord, ChapterFile, ChapterStatus, CharacterCard, ConsistencyIssue, Foreshadow, GenChapterResult, Kernel, Outline, ProjectMeta, ProposalRequest, SearchHit, Suggestion, Volume, VolumeBrief,
+  AppConfig, Bundle, ChatMessageRecord, ChapterFile, ChapterStatus, CharacterCard, ConsistencyIssue, Foreshadow, GenChapterResult, HealthReport, Kernel, Outline, ProjectMeta, ProposalRequest, SearchHit, Suggestion, Volume, VolumeBrief,
 } from '../../../shared/src/types';
 
 async function json<T>(res: Response): Promise<T> {
@@ -133,6 +133,11 @@ export const api = {
     ),
   refineVolume: (slug: string, volIndex: number, chapterCount: number) =>
     post<{ ok: true; volume: Volume }>(`/api/projects/${slug}/refine-volume/${volIndex}`, { chapterCount }),
+
+  /** 体检报告（纯统计 + .index 缓存汇总，零模型调用） */
+  health: (slug: string) => get<HealthReport>(`/api/projects/${slug}/health`),
+  /** 全书 L0 重跑（纯代码零成本），返回汇总 */
+  l0Rerun: (slug: string) => post<{ checked: number; flagged: number; high: number }>(`/api/projects/${slug}/l0-rerun`, {}),
 
   // 流式任务
   wizardKernel: (ideaPrompt: string, scale: { volumeCount: number; chaptersPerVolume: number; wordsPerChapter: number }, onDelta: (t: string) => void) =>

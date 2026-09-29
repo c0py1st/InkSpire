@@ -6,6 +6,7 @@ import { Home } from './components/Home';
 import { LeftPanel } from './components/LeftPanel';
 import { OutlineView } from './components/OutlineView';
 import { BibleView } from './components/BibleView';
+import { HealthView } from './components/HealthView';
 import { EditorView } from './components/EditorView';
 import { AiDrawer } from './components/AiDrawer';
 import { SettingsModal } from './components/SettingsModal';
@@ -34,6 +35,7 @@ export default function App() {
             {centerView === 'outline' && <OutlineView />}
             {centerView === 'editor' && <EditorView />}
             {centerView === 'bible' && <BibleView />}
+            {centerView === 'health' && <HealthView />}
           </main>
           <AiDrawer />
         </div>

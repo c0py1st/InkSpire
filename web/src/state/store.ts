@@ -1,11 +1,11 @@
 import { create } from 'zustand';
 import type {
-  AppConfig, Bundle, ChapterStatus, CharacterCard, Foreshadow, GenChapterResult, Outline, ProjectMeta, ProposalKind,
+  AppConfig, Bundle, ChapterStatus, CharacterCard, Foreshadow, GenChapterResult, HealthReport, Outline, ProjectMeta, ProposalKind,
 } from '../../../shared/src/types';
 import { atParagraphStart, ensureParagraphIndent } from '../../../shared/src/util';
 import { api } from '../api/client';
 
-export type CenterView = 'outline' | 'editor' | 'bible';
+export type CenterView = 'outline' | 'editor' | 'bible' | 'health';
 export type SaveState = 'idle' | 'dirty' | 'saving' | 'saved';
 export type ThemePref = 'light' | 'dark' | 'system';
 
@@ -70,6 +70,8 @@ interface Store {
   projects: ProjectMeta[];
   slug: string | null;
   bundle: (Bundle & { wordCounts: Record<string, number> }) | null;
+  health: HealthReport | null;
+  healthLoading: boolean;
 
   // 编辑器
   chapter: ChapterDraft | null;
@@ -99,6 +101,8 @@ interface Store {
   loadConfig: () => Promise<void>;
   saveConfig: (cfg: AppConfig) => Promise<void>;
   loadProjects: () => Promise<void>;
+  loadHealth: () => Promise<void>;
+  rerunHealthL0: () => Promise<void>;
   openProject: (slug: string) => Promise<void>;
   backHome: () => void;
   reloadBundle: () => Promise<void>;
@@ -182,6 +186,8 @@ export const useStore = create<Store>((set, get) => ({
   projects: [],
   slug: null,
   bundle: null,
+  health: null,
+  healthLoading: false,
 
   chapter: null,
   saveState: 'idle',
@@ -265,10 +271,38 @@ export const useStore = create<Store>((set, get) => ({
     set({ projects: await api.listProjects() });
   },
 
+  async loadHealth() {
+    const { slug } = get();
+    if (!slug) return;
+    set({ healthLoading: true });
+    try {
+      set({ health: await api.health(slug) });
+    } catch (err) {
+      get().toast(`体检读取失败：${(err as Error).message}`, 'error');
+    } finally {
+      set({ healthLoading: false });
+    }
+  },
+
+  async rerunHealthL0() {
+    const { slug } = get();
+    if (!slug) return;
+    set({ healthLoading: true });
+    try {
+      const r = await api.l0Rerun(slug);
+      get().toast(`L0 复跑：${r.checked} 章，${r.flagged} 章有信号，其中 high ${r.high}`, 'ok');
+      set({ health: await api.health(slug) });
+    } catch (err) {
+      get().toast(`L0 复跑失败：${(err as Error).message}`, 'error');
+    } finally {
+      set({ healthLoading: false });
+    }
+  },
+
   async openProject(slug) {
     try {
       const bundle = await api.getBundle(slug);
-      set({ slug, bundle, centerView: 'outline', chapter: null, suggestionsSeen: bundle.suggestions.length });
+      set({ slug, bundle, centerView: 'outline', chapter: null, suggestionsSeen: bundle.suggestions.length, health: null });
     } catch (err) {
       get().toast(`打开作品失败：${(err as Error).message}`, 'error');
     }
@@ -279,7 +313,7 @@ export const useStore = create<Store>((set, get) => ({
     if (prev.chapter && prev.saveState === 'dirty') {
       void prev.saveChapter();
     }
-    set({ slug: null, bundle: null, chapter: null, centerView: 'outline' });
+    set({ slug: null, bundle: null, chapter: null, centerView: 'outline', health: null });
     void get().loadProjects();
   },
 
