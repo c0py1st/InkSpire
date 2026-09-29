@@ -26,6 +26,7 @@ import { recapFingerprint, stateAtChapter } from '../../../shared/src/types';
 import { recordUsage } from '../cache-stats';
 import { l0Check, looksAncientSetting, type L0Finding } from '../../../shared/src/l0';
 import { loadL0Report, saveChapterL0 } from '../l0-report';
+import { verifyIssueQuotes } from '../quote-verify';
 import { recapPrompt } from '../ai/prompts/recap';
 import { countChars, ensureParagraphIndent } from '../../../shared/src/util';
 
@@ -898,7 +899,7 @@ aiRouter.post('/projects/:slug/check-consistency/:chapterId', async (req, res) =
       { role: 'user', content: prompt.user },
     ], { kind: 'json', temperature: 0.2, maxTokens: 4000,
       onMeta: (m) => { if (m.usage) recordUsage(slug, { source: 'consistency', chapterId, usage: m.usage }); } });
-    res.json(extractJson<{ issues: ConsistencyIssue[] }>(raw));
+    res.json({ issues: verifyIssueQuotes(extractJson<{ issues: ConsistencyIssue[] }>(raw).issues ?? [], content) });
   } catch (err) {
     res.status(500).json({ error: (err as Error).message });
   }

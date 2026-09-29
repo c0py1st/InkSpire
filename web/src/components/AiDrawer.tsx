@@ -477,9 +477,15 @@ export function AiDrawer() {
             {Array.isArray(issues) && (
               <>
                 {issues.length === 0 && <div style={{ color: 'var(--ok)', fontSize: 13 }}>未发现明显矛盾。</div>}
-                {issues.map((it, i) => (
-                  <div key={i} className={`issue sev-${it.severity}`}>
+                {issues.length > 0 && issues.some((it) => it.verified === false) && (
+                  <div style={{ fontSize: 11.5, color: 'var(--warn)', marginBottom: 6 }}>
+                    {issues.filter((it) => it.verified === false).length} 条问题的引文在正文中逐字找不到（模型可能臆造引证），已置底降级，请谨慎据此改稿。
+                  </div>
+                )}
+                {[...issues].sort((a, b) => (a.verified === false ? 1 : 0) - (b.verified === false ? 1 : 0)).map((it, i) => (
+                  <div key={i} className={`issue sev-${it.severity}${it.verified === false ? ' unverified' : ''}`}>
                     <span className="sev">{it.severity === 'high' ? '严重' : it.severity === 'medium' ? '中等' : '轻微'}</span>
+                    {it.verified === false && <span className="sev" title="引文未命中原文">引证存疑</span>}
                     {it.description}
                     {it.quote && <div className="quote">「{it.quote}」</div>}
                   </div>

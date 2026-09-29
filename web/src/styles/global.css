@@ -939,6 +939,9 @@ textarea { resize: vertical; line-height: 1.6; }
 .issue { border-left: 2px solid var(--warn); padding: 4px 0 4px 10px; font-size: 12.6px; }
 .issue .sev { font-weight: 700; font-size: 11px; margin-right: 6px; }
 .issue.sev-high { border-left-color: var(--danger); }
+/* 引证未命中原文：整体降饱和 + 虚线左边框，提示"别当真" */
+.issue.unverified { opacity: 0.62; border-left-style: dashed; border-left-color: var(--text-faint); }
+.issue.unverified .sev { color: var(--text-faint); }
 /* 一致性检查：弹窗内的结果列表与抽屉里的复查入口 */
 .issues-body { max-height: 56vh; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; }
 .issue-reopen {

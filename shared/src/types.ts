@@ -276,11 +276,14 @@ export interface SearchHit {
   snippet: string;
 }
 
-/** 一致性检查的一条问题（severity: high | medium | low） */
+/** 一致性检查的一条问题（severity: high | medium | low）
+ *  verified：服务端对 quote 做的引证落地校验——'exact' 逐字命中 / 'loose' 忽略空白命中 /
+ *  false 正文里找不到（引文系模型编造，UI 须降级展示、不得当作确定问题） */
 export interface ConsistencyIssue {
   severity: string;
   quote: string;
   description: string;
+  verified?: 'exact' | 'loose' | false;
 }
 
 /** 后台生成队列的单章结果（status 轮询与 SSE 事件的线上形状） */
