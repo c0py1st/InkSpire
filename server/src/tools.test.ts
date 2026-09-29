@@ -88,4 +88,23 @@ describe('executeTool 校验与行为', () => {
     const r = executeTool(SLUG, call('read_chapter', { chapterId: 'v01c001' }));
     expect(r.content.length).toBeLessThanOrEqual(4100);
   });
+
+  it('read_character_card 输出含状态时间线（按章排序），供"第X章时什么状态"作答', () => {
+    fs.mkdirSync(path.join(tmp, SLUG, 'bible'), { recursive: true });
+    fs.writeFileSync(path.join(tmp, SLUG, 'bible', 'characters.json'), JSON.stringify([
+      { id: 'x', name: '李慎', role: '主角', personality: 'p', background: 'b', relations: 'r', state: '现值：断臂',
+        stateHistory: [
+          { chapterId: 'v01c002', chapterTitle: '第二章', state: '右手划伤', reason: '验尸留下新伤', at: '' },
+          { chapterId: 'v01c001', chapterTitle: '第一章', state: '健康', at: '' },
+        ] },
+    ]));
+    const r = executeTool(SLUG, call('read_character_card', { name: '李慎' }));
+    expect(r.ok).toBe(true);
+    expect(r.content).toContain('状态时间线');
+    expect(r.content).toContain('右手划伤');
+    expect(r.content).toContain('验尸留下新伤');
+    // 时间线按章排序：第一章应排在第二章前
+    expect(r.content.indexOf('第一章')).toBeLessThan(r.content.indexOf('第二章'));
+    expect(r.detail).toContain('2 节点');
+  });
 });

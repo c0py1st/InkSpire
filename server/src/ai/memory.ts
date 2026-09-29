@@ -1,7 +1,7 @@
 import type {
   ChapterBeat, CharacterCard, Foreshadow, Outline, VolumeRecap,
 } from '../../../shared/src/types';
-import { recapFingerprint } from '../../../shared/src/types';
+import { recapFingerprint, stateAtChapter } from '../../../shared/src/types';
 import type { ChapterContext } from './prompts/prose';
 
 /**
@@ -112,7 +112,14 @@ export function buildChapterContext(args: {
   const nextChapters = vol.chapters.slice(loc.chapterIndex + 1, loc.chapterIndex + 3);
 
   const names = new Set((loc.chapter.characters ?? []).map((n) => n.trim()).filter(Boolean));
-  const cast = characters.filter((c) => names.has(c.name));
+  // 人物状态按"写本章时"取时间线值：有状态时间线的卡取本章之前的最近节点（没有则为空，
+  // 防重写旧章时泄漏后文状态）；无时间线的旧卡退回当前值，行为与从前一致
+  const cast = characters
+    .filter((c) => names.has(c.name))
+    .map((c) => {
+      if (!Array.isArray(c.stateHistory) || c.stateHistory.length === 0) return c;
+      return { ...c, state: stateAtChapter(c, chapterId) };
+    });
   // 出场名单里有但设定集中没有卡片的，也列出来防止模型张冠李戴
   const missing = [...names].filter((n) => !characters.some((c) => c.name === n));
   const mentionOnly = characters.filter((c) => !names.has(c.name) && (c.role === '主角' || c.role === '女主' || c.role === '反派')).slice(0, 4);

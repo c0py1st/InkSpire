@@ -37,6 +37,19 @@ export interface Outline {
   volumes: Volume[];
 }
 
+/**
+ * 人物状态时间线的一个节点：采纳某章归档产生的「状态变更」建议时写入。
+ * chapterId 形如 v01c003——零填充使字典序恰好等于阅读序，
+ * 因此"写到某章时该人物处于什么状态"可以直接比字符串，无需加载大纲。
+ */
+export interface StateEntry {
+  chapterId: string;     // 该状态由哪一章的归档产生（必填）
+  chapterTitle: string;
+  state: string;         // 该章末尾时点的人物状态
+  reason?: string;       // 剧情依据（建议的 note）
+  at: string;            // 落盘时间 ISO
+}
+
 export interface CharacterCard {
   id: string;
   name: string;
@@ -45,7 +58,45 @@ export interface CharacterCard {
   background: string;
   relations: string;
   speechHabit?: string;  // 口癖、说话方式
-  state?: string;        // 当前状态（伤势、立场变化等，agent 记忆闭环可更新）
+  state?: string;        // 当前状态（=时间线最新节点，冗余保留供旧数据与提示词直接用）
+  stateHistory?: StateEntry[];  // 按章的状态时间线（追加式；旧卡可能没有）
+}
+
+const CHAPTER_ID_RE = /^v\d{2,}c\d{3,}$/;
+
+/**
+ * 写/查第 chapterId 章时，该人物"当时"的状态。
+ * - 没有时间线的旧卡 → 退回当前值（行为与从前逐字节一致）；
+ * - 有时间线但没有早于本章的节点 → undefined（第一章之前无状态可述，
+ *   也防止重写旧章时把后文才有的状态剧透进去）。
+ * 同章多次采纳（重归档）时以推入顺序靠后的为准。
+ */
+export function stateAtChapter(card: CharacterCard, chapterId: string): string | undefined {
+  const hist = card.stateHistory;
+  if (!Array.isArray(hist) || hist.length === 0) return card.state;
+  let best: StateEntry | undefined;
+  for (const e of hist) {
+    if (!e?.state?.trim() || typeof e.chapterId !== 'string' || !CHAPTER_ID_RE.test(e.chapterId)) continue;
+    if (e.chapterId >= chapterId) continue;
+    if (!best || e.chapterId >= best.chapterId) best = e;
+  }
+  return best?.state;
+}
+
+/** 采纳「状态变更」建议 = 更新当前值 + 追加时间线节点（来源章缺失时只更新当前值） */
+export function applyStateSuggestion(card: CharacterCard, sug: Suggestion): void {
+  card.state = sug.content;
+  if (!sug.sourceChapterId || !CHAPTER_ID_RE.test(sug.sourceChapterId)) return;
+  const hist = (card.stateHistory = Array.isArray(card.stateHistory) ? card.stateHistory : []);
+  const last = hist[hist.length - 1];
+  if (last && last.chapterId === sug.sourceChapterId && last.state === sug.content) return; // 重复采纳同一观察
+  hist.push({
+    chapterId: sug.sourceChapterId,
+    chapterTitle: sug.sourceChapterTitle ?? '',
+    state: sug.content,
+    ...(sug.note?.trim() ? { reason: sug.note.trim() } : {}),
+    at: new Date().toISOString(),
+  });
 }
 
 export interface ProjectMeta {

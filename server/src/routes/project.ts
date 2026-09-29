@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import {
-  ChapterFile, CharacterCard, Foreshadow, Outline,
+  applyStateSuggestion, ChapterFile, CharacterCard, Foreshadow, Outline,
 } from '../../../shared/src/types';
 import { countChars } from '../../../shared/src/util';
 import {
@@ -201,7 +201,7 @@ projectRouter.post('/:slug/suggestions/:id/accept', (req, res) => {
     if (sug.kind === 'state') {
       const card = chars.find((c) => c.name === sug.name);
       if (!card) return res.status(400).json({ error: `人物「${sug.name}」已不在设定集，无法更新状态` });
-      card.state = sug.content;
+      applyStateSuggestion(card, sug);
       saveCharacters(req.params.slug, chars);
     }
     saveSuggestions(req.params.slug, bundle.suggestions.filter((s) => s.id !== req.params.id));

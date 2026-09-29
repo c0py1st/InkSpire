@@ -22,7 +22,7 @@ import {
   getMeta, listChapters, loadBundle, loadOutline, loadRecaps, loadSummaries, loadSuggestions, readChapter,
   saveChapterBody, saveOutline, saveRecaps, saveSuggestions, saveSummaries,
 } from '../fs-store';
-import { recapFingerprint } from '../../../shared/src/types';
+import { recapFingerprint, stateAtChapter } from '../../../shared/src/types';
 import { recapPrompt } from '../ai/prompts/recap';
 import { countChars, ensureParagraphIndent } from '../../../shared/src/util';
 
@@ -829,7 +829,8 @@ aiRouter.post('/projects/:slug/check-consistency/:chapterId', async (req, res) =
       chapterTitle: loc.chapter.title,
       content,
       beat: loc.chapter.beat,
-      characters: bundle.characters,
+      characters: bundle.characters.map((c) =>
+        Array.isArray(c.stateHistory) && c.stateHistory.length ? { ...c, state: stateAtChapter(c, chapterId) } : c),
       summaries: buildSummariesText(outline, bundle.summaries, chapterId, bundle.recaps),
       worldview: bundle.worldview,
       foreshadows: foreshadowText(outline, bundle.foreshadows, chapterId),

@@ -1,8 +1,47 @@
 import { useState } from 'react';
 import { useShallow } from 'zustand/react/shallow';
-import type { CharacterCard } from '../../../shared/src/types';
+import type { CharacterCard, StateEntry } from '../../../shared/src/types';
 import { useStore } from '../state/store';
 import { Btn } from './primitives';
+
+/** 人物状态时间线：采纳归档建议自动追加；这里供作者审阅、删除错节点、手补漏节点 */
+function StateHistoryView({ card, onChange }: { card: CharacterCard; onChange: (hist: StateEntry[]) => void }) {
+  const hist = Array.isArray(card.stateHistory) ? card.stateHistory : [];
+  const [open, setOpen] = useState(false);
+  const [draft, setDraft] = useState({ chapterId: '', state: '' });
+  const add = () => {
+    const cid = draft.chapterId.trim();
+    const st = draft.state.trim();
+    if (!/^v\d{2,}c\d{3,}$/.test(cid) || !st) return;
+    onChange([...hist, { chapterId: cid, chapterTitle: '', state: st, at: new Date().toISOString() }]);
+    setDraft({ chapterId: '', state: '' });
+  };
+  return (
+    <div style={{ marginTop: 8 }}>
+      <button className="icon-btn" style={{ width: 'auto', padding: '2px 10px', borderRadius: 'var(--r-pill)', fontSize: 12 }}
+        onClick={() => setOpen((o) => !o)}>
+        状态时间线 · {hist.length} 节点 {open ? '▲' : '▼'}
+      </button>
+      {open && (
+        <div style={{ marginTop: 6, display: 'flex', flexDirection: 'column', gap: 4 }}>
+          {hist.length === 0 && <div style={{ fontSize: 12, opacity: 0.6 }}>尚无节点——采纳某章归档产生的「状态变更」建议后会自动记在这里。</div>}
+          {hist.map((e, k) => (
+            <div key={k} style={{ display: 'flex', gap: 6, alignItems: 'center', fontSize: 12, padding: '4px 8px', borderRadius: 'var(--r-sm)', background: 'var(--gray-2)' }}>
+              <span style={{ opacity: 0.7, flexShrink: 0 }}>{e.chapterId}{e.chapterTitle ? `《${e.chapterTitle}》` : ''}</span>
+              <span style={{ flex: 1 }}>{e.state}{e.reason ? <span style={{ opacity: 0.6 }}>（{e.reason}）</span> : ''}</span>
+              <button className="icon-btn danger" title="删除该节点" onClick={() => onChange(hist.filter((_, x) => x !== k))}>✕</button>
+            </div>
+          ))}
+          <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+            <input type="text" placeholder="v01c003" style={{ width: 88 }} value={draft.chapterId} onChange={(ev) => setDraft((d) => ({ ...d, chapterId: ev.target.value }))} />
+            <input type="text" placeholder="该章时点的状态" style={{ flex: 1 }} value={draft.state} onChange={(ev) => setDraft((d) => ({ ...d, state: ev.target.value }))} />
+            <Btn ghost onClick={add} disabled={!/^v\d{2,}c\d{3,}$/.test(draft.chapterId.trim()) || !draft.state.trim()}>补记</Btn>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
 
 export function BibleView() {
   const { bundle, persistCharacters, persistWorldview, toast } = useStore(useShallow((s) => ({
@@ -59,6 +98,10 @@ export function BibleView() {
               <div className="field" style={{ flex: 1, marginBottom: 0 }}><label>说话特点</label><input type="text" value={c.speechHabit ?? ''} onChange={(e) => patchChar(i, { speechHabit: e.target.value })} /></div>
               <div className="field" style={{ flex: 1, marginBottom: 0 }}><label>当前状态</label><input type="text" value={c.state ?? ''} onChange={(e) => patchChar(i, { state: e.target.value })} /></div>
             </div>
+            <StateHistoryView
+              card={c}
+              onChange={(hist) => patchChar(i, { stateHistory: hist })}
+            />
           </div>
         ))}
 

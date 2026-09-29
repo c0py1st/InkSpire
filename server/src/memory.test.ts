@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import type { Foreshadow, Outline, VolumeRecap } from '../../shared/src/types';
-import { recapFingerprint } from '../../shared/src/types';
-import { buildSummariesText, flattenChapterIds, foreshadowText, locateChapter, nextChapterIds, openForeshadowListText } from './ai/memory';
+import type { CharacterCard, Foreshadow, Outline, Suggestion, VolumeRecap } from '../../shared/src/types';
+import { applyStateSuggestion, recapFingerprint, stateAtChapter } from '../../shared/src/types';
+import { buildChapterContext, buildSummariesText, flattenChapterIds, foreshadowText, locateChapter, nextChapterIds, openForeshadowListText } from './ai/memory';
 
 function fs_(over: Partial<Foreshadow>): Foreshadow {
   return {
@@ -235,5 +235,108 @@ describe('openForeshadowListText（全书上下文）', () => {
 
   it('空表返回空串', () => {
     expect(openForeshadowListText(o, [])).toBe('');
+  });
+});
+
+/* ---------------- 人物状态时间线 ---------------- */
+
+function card(over: Partial<CharacterCard> = {}): CharacterCard {
+  return { id: 'x', name: '李慎', role: '主角', personality: '', background: '', relations: '', ...over };
+}
+function sugState(over: Partial<Suggestion>): Suggestion {
+  return {
+    id: 's1', kind: 'state', name: '李慎', content: '右手带伤',
+    createdAt: '', ...over,
+  };
+}
+
+describe('stateAtChapter', () => {
+  it('无时间线的旧卡退回当前 state（行为不变）', () => {
+    expect(stateAtChapter(card({ state: '当前：痊愈' }), 'v01c002')).toBe('当前：痊愈');
+  });
+
+  it('取早于目标章的最近节点，不泄漏后文状态', () => {
+    const c = card({
+      state: '现值：断臂',
+      stateHistory: [
+        { chapterId: 'v01c001', chapterTitle: '第一章', state: '右手划伤', at: '' },
+        { chapterId: 'v01c003', chapterTitle: '第三章', state: '伤重发热', at: '' },
+      ],
+    });
+    // 写第二章时：只有第一章的节点早于它 → 取"右手划伤"，绝不取第三章或现值
+    expect(stateAtChapter(c, 'v01c002')).toBe('右手划伤');
+    // 写第四章时：第三章节点也早于它 → 取伤重发热
+    expect(stateAtChapter(c, 'v01c004')).toBe('伤重发热');
+  });
+
+  it('目标章早于全部节点时返回 undefined（第一章之前无状态可述）', () => {
+    const c = card({
+      state: '现值',
+      stateHistory: [{ chapterId: 'v02c001', chapterTitle: '', state: '晚近状态', at: '' }],
+    });
+    expect(stateAtChapter(c, 'v01c001')).toBeUndefined();
+  });
+
+  it('忽略 chapterId 非法或状态为空的脏节点', () => {
+    const c = card({
+      state: '现值',
+      stateHistory: [
+        { chapterId: '乱码', chapterTitle: '', state: '脏数据', at: '' },
+        { chapterId: 'v01c001', chapterTitle: '', state: '  ', at: '' },
+        { chapterId: 'v01c002', chapterTitle: '', state: '有效', at: '' },
+      ],
+    });
+    expect(stateAtChapter(c, 'v01c005')).toBe('有效');
+  });
+});
+
+describe('applyStateSuggestion', () => {
+  it('更新当前值并追加时间线节点', () => {
+    const c = card({ state: '旧' });
+    applyStateSuggestion(c, sugState({ content: '右手带伤', note: '查验盐车时留下新伤', sourceChapterId: 'v01c002', sourceChapterTitle: '第二章' }));
+    expect(c.state).toBe('右手带伤');
+    expect(c.stateHistory).toHaveLength(1);
+    expect(c.stateHistory![0]).toMatchObject({ chapterId: 'v01c002', state: '右手带伤', reason: '查验盐车时留下新伤', chapterTitle: '第二章' });
+  });
+
+  it('重复采纳同一观察（同章同状态）只留一个节点', () => {
+    const c = card();
+    const s = sugState({ content: '右手带伤', sourceChapterId: 'v01c002' });
+    applyStateSuggestion(c, s);
+    applyStateSuggestion(c, s);
+    expect(c.stateHistory).toHaveLength(1);
+  });
+
+  it('缺来源章时只更新当前值、不追加节点', () => {
+    const c = card();
+    applyStateSuggestion(c, sugState({ content: '立场动摇', sourceChapterId: undefined }));
+    expect(c.state).toBe('立场动摇');
+    expect(c.stateHistory ?? []).toHaveLength(0);
+  });
+});
+
+describe('buildChapterContext 人物状态按章取时点值', () => {
+  const o = outline();
+  it('重写旧章时，出场人物卡注入"当时"的状态而非现值', () => {
+    const c = card({
+      state: '现值：断臂',
+      stateHistory: [
+        { chapterId: 'v01c001', chapterTitle: 'v01-第1章', state: '右手划伤', at: '' },
+      ],
+    });
+    // 目标 v01c002，出场名单含李慎 → 取第一章节点
+    const ctx = buildChapterContext({
+      outline: (() => {
+        // 把目标章的 characters 设为 [李慎]
+        const oo = structuredClone(o);
+        oo.volumes[0].chapters[1].characters = ['李慎'];
+        return oo;
+      })(),
+      chapterId: 'v01c002',
+      characters: [c],
+      worldview: '',
+      summaries: {},
+    });
+    expect(ctx.cast.find((x) => x.name === '李慎')?.state).toBe('右手划伤');
   });
 });

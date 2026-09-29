@@ -18,7 +18,7 @@ export function consistencyPrompt(args: {
 本章大纲要求：${args.beat}
 
 【人物卡】
-${args.characters.map((c) => `- ${c.name}（${c.role}）：${c.personality}；${c.background}；关系：${c.relations}${c.state ? `；当前状态：${c.state}` : ''}`).join('\n') || '（空）'}
+${args.characters.map((c) => `- ${c.name}（${c.role}）：${c.personality}；${c.background}；关系：${c.relations}${c.state ? `；截至本章前的状态：${c.state}` : ''}`).join('\n') || '（空）'}
 
 【世界观】
 ${args.worldview || '（空）'}

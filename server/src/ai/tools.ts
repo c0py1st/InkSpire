@@ -44,7 +44,7 @@ export const TOOL_SPECS: ToolSpec[] = [
     type: 'function',
     function: {
       name: 'read_character_card',
-      description: '按姓名读取某个人物的完整设定卡（性格/背景/关系/口癖/当前状态）。回答人物相关问题时以卡片为准。',
+      description: '按姓名读取人物完整设定卡（性格/背景/关系/口癖/当前状态）。若卡上有「状态时间线」，回答"第X章时该人物是什么状态/伤好了吗"这类问题必须以时间线为准，而不是当前状态。',
       parameters: {
         type: 'object',
         properties: { name: { type: 'string', description: '人物姓名' } },
@@ -193,8 +193,17 @@ export function executeTool(slug: string, call: ToolCall): ToolOutcome {
       }
       return {
         ok: true,
-        content: cap(JSON.stringify({ name: hit.name, role: hit.role, personality: hit.personality, background: hit.background, relations: hit.relations, speechHabit: hit.speechHabit ?? '', state: hit.state ?? '（未记录）' })),
-        detail: `读卡「${hit.name}」`,
+        content: cap(JSON.stringify({
+          name: hit.name, role: hit.role, personality: hit.personality, background: hit.background,
+          relations: hit.relations, speechHabit: hit.speechHabit ?? '', state: hit.state ?? '（未记录）',
+          状态时间线: Array.isArray(hit.stateHistory) && hit.stateHistory.length
+            ? [...hit.stateHistory]
+                .filter((e) => e && typeof e.chapterId === 'string')
+                .sort((a, b) => a.chapterId.localeCompare(b.chapterId))
+                .map((e) => `${e.chapterId}《${e.chapterTitle || ''}》→ ${e.state}${e.reason ? `（${e.reason}）` : ''}`)
+            : '（无时间线，仅有当前状态）',
+        })),
+        detail: `读卡「${hit.name}」（时间线 ${Array.isArray(hit.stateHistory) ? hit.stateHistory.length : 0} 节点）`,
       };
     }
     case 'read_foreshadow_list': {
