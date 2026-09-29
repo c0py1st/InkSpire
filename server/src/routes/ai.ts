@@ -24,6 +24,8 @@ import {
 } from '../fs-store';
 import { recapFingerprint, stateAtChapter } from '../../../shared/src/types';
 import { recordUsage } from '../cache-stats';
+import { l0Check, looksAncientSetting, type L0Finding } from '../../../shared/src/l0';
+import { loadL0Report, saveChapterL0 } from '../l0-report';
 import { recapPrompt } from '../ai/prompts/recap';
 import { countChars, ensureParagraphIndent } from '../../../shared/src/util';
 
@@ -534,7 +536,7 @@ export async function ensureVolumeRecap(
  */
 export async function finalizeChapterCore(
   slug: string, chapterId: string, contentIn?: string,
-): Promise<{ summary: string; newSuggestions: Suggestion[] }> {
+): Promise<{ summary: string; newSuggestions: Suggestion[]; l0: L0Finding[] }> {
   const cfg = loadConfig();
   const outline = loadOutline(slug);
   if (!outline) throw new Error('本书还没有大纲');
@@ -617,6 +619,15 @@ export async function finalizeChapterCore(
   const all = [...kept, ...added, ...worldAdded, ...stateAdded].slice(-50);
   saveSuggestions(slug, all);
 
+  // L0 确定性预检（零模型成本）：归档顺手做一次体检，结果落 .index 缓存供体检面板消费。
+  // 纯函数派生数据，失败绝不影响归档主流程。
+  let l0Findings: L0Finding[] = [];
+  try {
+    l0Findings = runL0ForChapter(slug, chapterId, outline, content);
+  } catch (err) {
+    console.error('[l0] 预检失败（不影响归档）：', (err as Error).message);
+  }
+
   // 本卷就此归档齐 → 顺带压一条卷回本（每卷至多一次模型调用）。
   // 失败只记日志：回本缺失时注入自动退回逐章摘要，不该连累归档主流程。
   try {
@@ -625,8 +636,41 @@ export async function finalizeChapterCore(
     console.error(`[recap] 卷回本生成失败（${loc.volume.id}）：`, (err as Error).message);
   }
 
-  return { summary: parsed.summary, newSuggestions: [...added, ...worldAdded, ...stateAdded] };
+  return { summary: parsed.summary, newSuggestions: [...added, ...worldAdded, ...stateAdded], l0: l0Findings };
 }
+
+/** 跑一章的 L0 预检并写缓存：题材决定是否启用默认现代词表（都市题材必误报） */
+function runL0ForChapter(slug: string, chapterId: string, outline: NonNullable<ReturnType<typeof loadOutline>>, content?: string): L0Finding[] {
+  const text = content?.trim() ? content : readChapter(slug, chapterId).content;
+  const targetWords = getMeta(slug).wordsPerChapter;
+  const findings = l0Check(text, {
+    targetWords,
+    ancientSetting: looksAncientSetting(`${outline.genre} ${outline.styleGuide} ${outline.premise}`),
+  });
+  saveChapterL0(slug, chapterId, findings);
+  return findings;
+}
+
+/** 手动/按需预检一章 */
+aiRouter.post('/projects/:slug/l0/:chapterId', (req, res) => {
+  const { slug, chapterId } = req.params;
+  try {
+    const outline = loadOutline(slug);
+    if (!outline) return res.status(400).json({ error: '本书还没有大纲' });
+    res.json({ findings: runL0ForChapter(slug, chapterId, outline) });
+  } catch (err) {
+    res.status(400).json({ error: (err as Error).message });
+  }
+});
+
+/** 全书 L0 报告（.index 缓存投影；从未跑过的章不在表内，面板按需补跑） */
+aiRouter.get('/projects/:slug/l0', (req, res) => {
+  try {
+    res.json(loadL0Report(req.params.slug));
+  } catch (err) {
+    res.status(400).json({ error: (err as Error).message });
+  }
+});
 
 aiRouter.post('/projects/:slug/finalize-chapter/:chapterId', async (req, res) => {
   const { slug, chapterId } = req.params;
