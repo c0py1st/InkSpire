@@ -608,7 +608,7 @@ export const useStore = create<Store>((set, get) => ({
     try {
       await api.acceptSuggestion(slug, id);
       await get().reloadBundle();
-      get().toast(kind === 'state' ? '人物卡状态已更新' : '已加入人物卡', 'ok');
+      get().toast(kind === 'state' ? '人物卡状态已更新' : kind === 'outline' ? '大纲 beat 已更新' : '已加入人物卡', 'ok');
     } catch (err) {
       get().toast((err as Error).message, 'error');
     }

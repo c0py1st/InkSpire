@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { CharacterCard, Foreshadow, Outline, Suggestion, VolumeRecap } from '../../shared/src/types';
-import { applyStateSuggestion, recapFingerprint, stateAtChapter } from '../../shared/src/types';
+import { applyOutlineSuggestion, applyStateSuggestion, recapFingerprint, stateAtChapter } from '../../shared/src/types';
 import { buildChapterContext, buildSummariesText, flattenChapterIds, foreshadowText, locateChapter, nextChapterIds, openForeshadowListText } from './ai/memory';
 
 function fs_(over: Partial<Foreshadow>): Foreshadow {
@@ -384,5 +384,29 @@ describe('buildSummariesText 量化滑窗', () => {
     const b2 = buildSummariesText(o, huge, 'v01c003');
     expect(b2).toContain('H'.repeat(1500) + '…'); // 定长切点：恒定 1500，与预算余量无关
     expect(b2).not.toContain('H'.repeat(1501));
+  });
+});
+
+/* ---------------- 大纲修订建议（applyOutlineSuggestion） ---------------- */
+
+describe('applyOutlineSuggestion', () => {
+  const o = outline();
+  const base: Suggestion = {
+    id: 's', kind: 'outline', name: 't', content: '新的大纲要求：主角当众与反派翻脸',
+    sourceChapterId: 'v01c002', createdAt: '',
+  };
+  it('命中源章 → 替换其 beat 并返回 true', () => {
+    const target = structuredClone(o);
+    expect(applyOutlineSuggestion(target, base)).toBe(true);
+    const ch = target.volumes[0].chapters.find((c) => c.id === 'v01c002')!;
+    expect(ch.beat).toBe(base.content);
+    // 其它章不受影响
+    expect(target.volumes[0].chapters[0].beat).toBe('b');
+  });
+  it('缺 sourceChapterId 或大纲无此章 → false、大纲不变', () => {
+    const t1 = structuredClone(o);
+    expect(applyOutlineSuggestion(t1, { ...base, sourceChapterId: undefined })).toBe(false);
+    expect(applyOutlineSuggestion(t1, { ...base, sourceChapterId: 'v99c999' })).toBe(false);
+    expect(t1.volumes[0].chapters[1].beat).toBe('b');
   });
 });

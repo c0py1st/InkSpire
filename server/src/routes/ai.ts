@@ -555,6 +555,7 @@ export async function finalizeChapterCore(
     content: content.slice(0, 20000),
     knownCharacters: bundle.characters.map((c) => c.name),
     characterStates: bundle.characters.map((c) => ({ name: c.name, state: c.state ?? '' })),
+    beat: loc.chapter.beat,
   });
   // 辅助 JSON 任务：deepseek 推理型模型需要为思考预留 token，给足 max_tokens
   const raw = await chatOnce(cfg, assistProfile(cfg), [
@@ -567,6 +568,7 @@ export async function finalizeChapterCore(
     newCharacters: Array<{ name: string; reason: string }>;
     worldNotes: string[];
     stateChanges?: Array<{ name: string; newState: string; reason?: string }>;
+    beatDrift?: { drifted?: boolean; problem?: string; newBeat?: string };
   }>(raw);
 
   const summaries = { ...bundle.summaries, [chapterId]: parsed.summary };
@@ -615,9 +617,26 @@ export async function finalizeChapterCore(
       createdAt: new Date().toISOString(),
     });
   }
+  // 大纲修订建议卡：drifted=true 且给出新 beat 才生成（人采纳才改 outline，绝不静默改契约）。
+  // 同一章若已有待审大纲卡，被本次新观察覆盖（与 state 卡去重同理）。
+  const outlineAdded: Suggestion[] = [];
+  if (parsed.beatDrift?.drifted && parsed.beatDrift.newBeat?.trim()) {
+    outlineAdded.push({
+      id: `sug-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+      kind: 'outline',
+      name: loc.chapter.title,
+      content: parsed.beatDrift.newBeat.trim(),
+      note: parsed.beatDrift.problem?.trim() || undefined,
+      ...src,
+      createdAt: new Date().toISOString(),
+    });
+  }
   const superseded = new Set(stateAdded.map((s) => s.name));
-  const kept = suggestions.filter((s) => !(s.kind === 'state' && superseded.has(s.name)));
-  const all = [...kept, ...added, ...worldAdded, ...stateAdded].slice(-50);
+  const supersededOutline = outlineAdded.length > 0 && src.sourceChapterId;
+  const kept = suggestions.filter((s) =>
+    !(s.kind === 'state' && superseded.has(s.name))
+    && !(s.kind === 'outline' && supersededOutline && s.sourceChapterId === src.sourceChapterId));
+  const all = [...kept, ...added, ...worldAdded, ...stateAdded, ...outlineAdded].slice(-50);
   saveSuggestions(slug, all);
 
   // L0 确定性预检（零模型成本）：归档顺手做一次体检，结果落 .index 缓存供体检面板消费。
@@ -637,7 +656,7 @@ export async function finalizeChapterCore(
     console.error(`[recap] 卷回本生成失败（${loc.volume.id}）：`, (err as Error).message);
   }
 
-  return { summary: parsed.summary, newSuggestions: [...added, ...worldAdded, ...stateAdded], l0: l0Findings };
+  return { summary: parsed.summary, newSuggestions: [...added, ...worldAdded, ...stateAdded, ...outlineAdded], l0: l0Findings };
 }
 
 /** 跑一章的 L0 预检并写缓存：题材决定是否启用默认现代词表（都市题材必误报） */

@@ -103,11 +103,20 @@ function yieldMockJson(promptHint: string): string {
     });
   }
   if (promptHint.includes('剧情摘要') || promptHint.includes('本章摘要')) {
+    // 演示：正文带「演示·大纲漂移」标记时，模拟一次"已成事实偏离 beat 且给出新 beat"
+    const drift = promptHint.includes('演示·大纲漂移');
     return JSON.stringify({
       summary: '【演示摘要】李慎查验盐车命案发现致命伤不在车轮而在咽喉，锁定第一嫌疑人周主簿，同时收到匿名警告信。',
       newCharacters: [],
       worldNotes: [],
       stateChanges: [{ name: '李慎', newState: '右手在停尸房被锈蚀铁架划伤，已用烧酒简单处理，验尸时开始结痂发痒', reason: '本章查验盐车时留下新伤' }],
+      ...(drift ? {
+        beatDrift: {
+          drifted: true,
+          problem: '正文里周主簿已当面撕破脸，比原 beat 的"暗中试探"更进一步，成为后续不可回退的事实',
+          newBeat: '周主簿当面对质后撕破脸，李慎与其公开为敌——原"暗中试探"已被正文事实取代。',
+        },
+      } : {}),
     });
   }
   if (promptHint.includes('逐项检查') || promptHint.includes('一致性检查')) {

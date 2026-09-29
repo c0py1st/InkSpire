@@ -1,10 +1,10 @@
 import { Router } from 'express';
 import {
-  applyStateSuggestion, ChapterFile, CharacterCard, Foreshadow, Outline,
+  applyOutlineSuggestion, applyStateSuggestion, ChapterFile, CharacterCard, Foreshadow, Outline,
 } from '../../../shared/src/types';
 import { countChars } from '../../../shared/src/util';
 import {
-  listChapterBackups, listChapters, loadBundle, loadChat, loadForeshadows, loadSummaries, readChapter, readChapterBackup,
+  listChapterBackups, listChapters, loadBundle, loadChat, loadForeshadows, loadOutline, loadSummaries, readChapter, readChapterBackup,
   saveCharacters, saveChapterBody, saveChat, saveOutline, saveForeshadows, saveSummaries, saveSuggestions, saveWorldview,
 } from '../fs-store';
 import { searchChapters } from '../chapter-index';
@@ -221,6 +221,12 @@ projectRouter.post('/:slug/suggestions/:id/accept', (req, res) => {
       if (!card) return res.status(400).json({ error: `人物「${sug.name}」已不在设定集，无法更新状态` });
       applyStateSuggestion(card, sug);
       saveCharacters(req.params.slug, chars);
+    }
+    if (sug.kind === 'outline') {
+      const oc = loadOutline(req.params.slug);
+      if (!oc) return res.status(400).json({ error: '本书还没有大纲，无从修订' });
+      if (!applyOutlineSuggestion(oc, sug)) return res.status(400).json({ error: '大纲里找不到这条建议对应的章节' });
+      saveOutline(req.params.slug, oc);
     }
     saveSuggestions(req.params.slug, bundle.suggestions.filter((s) => s.id !== req.params.id));
     res.json({ ok: true });

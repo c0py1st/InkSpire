@@ -110,13 +110,23 @@ export interface ProjectMeta {
 
 export interface Suggestion {
   id: string;
-  kind: 'character' | 'world' | 'state';   // state = 已建档人物的当前状态变更建议
-  name: string;
-  content: string;       // 建议补充的设定内容原文（state 类 = 新状态一句话）
-  note?: string;         // 补充说明（state 类 = 剧情依据）
-  sourceChapterId?: string;    // 由哪一章的归档产生（旧数据可能没有）
+  kind: 'character' | 'world' | 'state' | 'outline';   // state=人物当前状态变更；outline=本章 beat 偏离修订
+  name: string;              // outline 类 = 「《章题》·修订大纲」展示名
+  content: string;           // 建议补充的设定内容原文（state=新状态一句话；outline=新 beat 文本）
+  note?: string;             // 补充说明（state=剧情依据；outline=偏离描述）
+  sourceChapterId?: string;    // 由哪一章的归档产生（旧数据可能没有；outline 类缺它则无法定位）
   sourceChapterTitle?: string;
   createdAt: string;
+}
+
+/** 采纳大纲修订建议：把 content 写回 sourceChapterId 章的 beat。命中返回 true（就地修改传入的 outline） */
+export function applyOutlineSuggestion(outline: Outline, sug: Suggestion): boolean {
+  if (!sug.sourceChapterId) return false;
+  for (const v of outline.volumes) {
+    const ch = v.chapters.find((c) => c.id === sug.sourceChapterId);
+    if (ch) { ch.beat = sug.content; return true; }
+  }
+  return false;
 }
 
 /** 伏笔登记：埋设章 -> 内容 -> 计划回收章 -> 状态。生成与检查时按章注入 */
