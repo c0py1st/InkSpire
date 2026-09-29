@@ -8,6 +8,7 @@ import {
   saveCharacters, saveChapterBody, saveChat, saveOutline, saveForeshadows, saveSummaries, saveSuggestions, saveWorldview,
 } from '../fs-store';
 import { searchChapters } from '../chapter-index';
+import { loadCacheStats, resetCacheStats } from '../cache-stats';
 
 export const projectRouter = Router();
 
@@ -135,6 +136,23 @@ projectRouter.get('/:slug/chat', (req, res) => {
     res.json(loadChat(req.params.slug));
   } catch (err) {
     res.status(404).json({ error: (err as Error).message });
+  }
+});
+
+projectRouter.get('/:slug/cache-stats', (req, res) => {
+  try {
+    res.json(loadCacheStats(req.params.slug));
+  } catch (err) {
+    res.status(400).json({ error: (err as Error).message });
+  }
+});
+
+projectRouter.delete('/:slug/cache-stats', (req, res) => {
+  try {
+    resetCacheStats(req.params.slug);
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(400).json({ error: (err as Error).message });
   }
 });
 

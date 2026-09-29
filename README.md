@@ -78,6 +78,7 @@ data/
     recaps.json           # 卷回本（已完成卷的粗粒度记忆，可重建、按指纹判过期）
     chapters/.backups/    # 大幅删改前的自动备份
     .index/chapters.db    # 全文检索索引（可重建缓存，不进备份；可随时删）
+    .index/cache-stats.json # 模型调用 usage 与前缀缓存命中统计（可重建观测缓存，不进备份）
 ```
 
 ## Agent 架构（对话工具层）

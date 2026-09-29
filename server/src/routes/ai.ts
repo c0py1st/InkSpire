@@ -23,6 +23,7 @@ import {
   saveChapterBody, saveOutline, saveRecaps, saveSuggestions, saveSummaries,
 } from '../fs-store';
 import { recapFingerprint, stateAtChapter } from '../../../shared/src/types';
+import { recordUsage } from '../cache-stats';
 import { recapPrompt } from '../ai/prompts/recap';
 import { countChars, ensureParagraphIndent } from '../../../shared/src/util';
 
@@ -277,7 +278,10 @@ async function runOneChapter(task: BgGenTask, item: QueueItem): Promise<ChapterR
         signal: task.ctl.signal, kind: 'prose',
         onMeta: (m) => {
           finishReason = m.finishReason ?? finishReason;
-          if (m.usage) console.error('[moge:bggen] usage:', JSON.stringify(m.usage), 'finish:', finishReason);
+          if (m.usage) {
+            recordUsage(slug, { source: 'prose', chapterId, usage: m.usage });
+            console.error('[moge:bggen] usage:', JSON.stringify(m.usage), 'finish:', finishReason);
+          }
         },
       })) {
         acc += delta;
@@ -308,7 +312,10 @@ async function runOneChapter(task: BgGenTask, item: QueueItem): Promise<ChapterR
           { role: 'user', content: cont.user },
         ], {
           signal: task.ctl.signal, kind: 'prose',
-          onMeta: (m) => { tailReason = m.finishReason ?? tailReason; },
+          onMeta: (m) => {
+            tailReason = m.finishReason ?? tailReason;
+            if (m.usage) recordUsage(slug, { source: 'prose-cont', chapterId, usage: m.usage });
+          },
         })) {
           acc += delta;
           task.chars = countChars(acc);
@@ -508,7 +515,10 @@ export async function ensureVolumeRecap(
   const raw = await chatOnce(cfg, assistProfile(cfg), [
     { role: 'system', content: prompt.system },
     { role: 'user', content: prompt.user },
-  ], { kind: 'json', temperature: 0.3, maxTokens: 2000 });
+  ], {
+    kind: 'json', temperature: 0.3, maxTokens: 2000,
+    onMeta: (m) => { if (m.usage) recordUsage(slug, { source: 'recap', chapterId: volumeId, usage: m.usage }); },
+  });
   const parsed = extractJson<{ recap: string }>(raw);
   if (!parsed.recap?.trim()) throw new Error('卷回本生成为空');
   recaps[volumeId] = { recap: parsed.recap.trim(), fingerprint: fp, updatedAt: new Date().toISOString() };
@@ -547,7 +557,8 @@ export async function finalizeChapterCore(
   const raw = await chatOnce(cfg, assistProfile(cfg), [
     { role: 'system', content: prompt.system },
     { role: 'user', content: prompt.user },
-  ], { kind: 'json', temperature: 0.3, maxTokens: 4000 });
+  ], { kind: 'json', temperature: 0.3, maxTokens: 4000,
+    onMeta: (m) => { if (m.usage) recordUsage(slug, { source: 'summary', chapterId, usage: m.usage }); } });
   const parsed = extractJson<{
     summary: string;
     newCharacters: Array<{ name: string; reason: string }>;
@@ -674,7 +685,10 @@ async function runChatReact(
         // 末轮不带 tools 即物理禁调用；tool_choice 只随 tools 一起发，
         // 否则部分平台对"有 tool_choice 无 tools"报 400
         ...(useTools ? { tools: TOOL_SPECS, toolChoice: 'auto' as const } : {}),
-        onMeta: (m) => { finishReason = m.finishReason ?? finishReason; },
+        onMeta: (m) => {
+          finishReason = m.finishReason ?? finishReason;
+          if (m.usage) recordUsage(slug, { source: 'chat', usage: m.usage });
+        },
         onToolCalls: (c) => { calls = c; },
       })) {
         text += delta;
@@ -838,7 +852,8 @@ aiRouter.post('/projects/:slug/check-consistency/:chapterId', async (req, res) =
     const raw = await chatOnce(cfg, assistProfile(cfg), [
       { role: 'system', content: prompt.system },
       { role: 'user', content: prompt.user },
-    ], { kind: 'json', temperature: 0.2, maxTokens: 4000 });
+    ], { kind: 'json', temperature: 0.2, maxTokens: 4000,
+      onMeta: (m) => { if (m.usage) recordUsage(slug, { source: 'consistency', chapterId, usage: m.usage }); } });
     res.json(extractJson<{ issues: ConsistencyIssue[] }>(raw));
   } catch (err) {
     res.status(500).json({ error: (err as Error).message });
@@ -870,7 +885,8 @@ aiRouter.post('/projects/:slug/refine-volume/:volIndex', async (req, res) => {
     const raw = await chatOnce(cfg, creativeProfile(cfg), [
       { role: 'system', content: prompt.system },
       { role: 'user', content: prompt.user },
-    ], { kind: 'json', maxTokens: 8192 });
+    ], { kind: 'json', maxTokens: 8192,
+      onMeta: (m) => { if (m.usage) recordUsage(slug, { source: 'beats', usage: m.usage }); } });
     const parsed = extractJson<{ chapters: Array<{ title: string; beat: string; pov?: string; characters?: string[] }> }>(raw);
     const keepIds = vol.chapters.map((ch) => ch.id).slice(0, parsed.chapters.length);
     const { chapterId: mkId } = await import('../../../shared/src/util');

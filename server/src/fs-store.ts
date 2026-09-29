@@ -33,6 +33,23 @@ function jfile(slug: string, ...segs: string[]): string {
   return path.join(projectDir(slug), ...segs);
 }
 
+/** .index/ 下的可重建附属文件（索引/统计），备份时随 .index 一起排除 */
+export function indexFile(slug: string, name: string): string {
+  return jfile(slug, '.index', name);
+}
+
+export function writeIndexJson(slug: string, name: string, obj: unknown): void {
+  writeJson(indexFile(slug, name), obj);
+}
+
+export function readIndexJsonRaw(slug: string, name: string): unknown {
+  try {
+    return JSON.parse(fs.readFileSync(indexFile(slug, name), 'utf8'));
+  } catch {
+    return null;
+  }
+}
+
 function writeJson(file: string, obj: unknown): void {
   fs.mkdirSync(path.dirname(file), { recursive: true });
   const tmp = file + '.tmp';

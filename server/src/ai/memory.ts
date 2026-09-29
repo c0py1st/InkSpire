@@ -21,7 +21,10 @@ export function locateChapter(
   throw new Error(`大纲中找不到章节 ${chapterId}`);
 }
 
-const SUMMARY_BUDGET_CHARS = 12000;   // 前情摘要的总字数预算
+const SUMMARY_BUDGET_CHARS = 12000;   // 前情摘要的基准预算
+const SUMMARY_SLACK_CHARS = 4000;     // 量化滑窗余量：整块超过 预算+余量 才丢弃
+const SUMMARY_DISCARD_BATCH = 8;      // 量化丢弃批（条）：丢弃数向上取整到此批的倍数，头部连续多章逐字节不变，前缀缓存才有命中窗口
+const SUMMARY_LINE_CAP = 1500;        // 单条定长截断上限：定长即字节稳定，不随预算余量浮动
 const PREV_TAIL_CHARS = 1500;
 
 export function buildSummariesText(
@@ -32,11 +35,10 @@ export function buildSummariesText(
 ): string {
   // 分层前情：目标之前的整卷若已有"新鲜"卷回本，用一条粗粒度回顾顶替该卷全部逐章摘要；
   // 当前卷、以及回本缺失/过期（指纹不符）的卷，仍逐章细粒度注入。
-  // 不传 recaps 时退回纯逐章，与旧行为逐字节一致（向后兼容）。
-  const lines: string[] = [];
-  let budget = SUMMARY_BUDGET_CHARS;
+  // 预算溢出时"整条进出"（不切半条）：块首字节只在整条丢弃时才变，
+  // 避免旧实现"预算余量切最旧一条"导致每章首行都在变——那会让整块的前缀缓存每章必断。
   // 先按阅读顺序生成"条目"（章 或 卷回本），再从最近往旧填充预算——
-  // 与旧实现一样保证最近章节/最新卷回本优先留在预算内。
+  // 保证最近章节/最新卷回本优先留在预算内。
   type Entry = { kind: 'ch'; label: string; text: string } | { kind: 'recap'; label: string; text: string };
   const ordered: Entry[] = [];
   let reached = false;
@@ -63,17 +65,27 @@ export function buildSummariesText(
       }
     }
   }
-  for (let i = ordered.length - 1; i >= 0; i--) {
-    if (budget <= 0) break;
-    const item = ordered[i];
-    const text = item.text.length > budget ? item.text.slice(0, budget) + '…' : item.text;
-    const line = item.kind === 'recap'
-      ? `【卷回本·${item.label}】${text}`
-      : `《${item.label}》：${text}`;
-    lines.unshift(line);
-    budget -= text.length;
+  // 量化滑窗（定长边界=头部稳定）：阅读序整条保留，超过 预算+滑窗余量 才成批从最旧处丢弃；
+  // 两次丢弃之间整块逐字节稳定（新条目只追加在尾部）——provider 前缀缓存可长期命中。
+  // 单条超限时按"定长上限+…"截断（切点固定，不随预算余量浮动）。
+  const capLine = (item: Entry): string => {
+    const text = item.text.length > SUMMARY_LINE_CAP ? item.text.slice(0, SUMMARY_LINE_CAP) + '…' : item.text;
+    return item.kind === 'recap' ? `【卷回本·${item.label}】${text}` : `《${item.label}》：${text}`;
+  };
+  const lines = ordered.map(capLine);
+  let total = lines.length ? lines.reduce((a, s) => a + s.length + 1, -1) : 0; // 含 '\n' 连接符
+  // 量化滑窗（前缀缓存友好）：先求"整条保留到不超过 预算+滑窗 的最小丢弃数"，
+  // 再把丢弃数对齐到 SUMMARY_DISCARD_BATCH 的整批（向上取整）——
+  // 头部条目因此连续多章逐字节不变（新内容只在尾部追加），下一次成批丢弃前
+  // 公共前缀一路延长；旧实现按预算余量切半条，首行每章都变，缓存前缀每章必断。
+  const MAX = SUMMARY_BUDGET_CHARS + SUMMARY_SLACK_CHARS;
+  let from = 0;
+  while (total > MAX && lines.length - from > 1) {
+    total -= lines[from].length + 1;
+    from++;
   }
-  return lines.join('\n');
+  if (from > 0) from = Math.min(Math.ceil(from / SUMMARY_DISCARD_BATCH) * SUMMARY_DISCARD_BATCH, lines.length - 1);
+  return lines.slice(from).join('\n');
 }
 
 /** 按大纲顺序展开全部章节 id（卷序 + 卷内序） */

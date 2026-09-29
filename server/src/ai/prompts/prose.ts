@@ -34,15 +34,17 @@ ${[
   `本卷《${ctx.volumeTitle}》剧情弧：${ctx.volumeSummary}`,
   ctx.summaries ? `【前情摘要】\n${ctx.summaries}` : '【前情摘要】这是全书第一章。',
   ctx.foreshadow ? `【伏笔登记表（写作纪律，必须遵守）】\n${ctx.foreshadow}` : '',
-  ctx.prevTail ? `【上一章结尾原文】（承接其场景、语气与未收的钩子）\n…${ctx.prevTail}` : '',
+  // ↓ 排布即缓存策略：前面的块跨章逐字节稳定（DeepSeek 前缀缓存按最长公共前缀命中），
+  // 每章都变的块（在场人物卡/上一章结尾/本章约束）一律压到生成点之前。
+  ctx.mentionOnly.length
+    ? `【仅提及的人物】${ctx.mentionOnly.map((c) => `${c.name}：${c.personality}`).join('；')}`
+    : '',
   ctx.cast.length
     ? `【本章出场人物卡】\n${ctx.cast
         .map((c) => `${c.name}（${c.role}）：性格 ${c.personality}；背景 ${c.background}；关系 ${c.relations}${c.speechHabit ? `；说话 ${c.speechHabit}` : ''}${c.state ? `；状态 ${c.state}` : ''}`)
         .join('\n')}`
     : '',
-  ctx.mentionOnly.length
-    ? `【仅提及的人物】${ctx.mentionOnly.map((c) => `${c.name}：${c.personality}`).join('；')}`
-    : '',
+  ctx.prevTail ? `【上一章结尾原文】（承接其场景、语气与未收的钩子）\n…${ctx.prevTail}` : '',
   `【本章硬约束】第 ${ctx.chapter.title} 章（POV：${ctx.chapter.pov ?? '自由'}）\n${ctx.chapter.beat}`,
   nextBeats ? `【后续章节走向（写作时可埋钩子，但不要提前展开）】\n${nextBeats}` : '',
 ]

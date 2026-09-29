@@ -340,3 +340,49 @@ describe('buildChapterContext 人物状态按章取时点值', () => {
     expect(ctx.cast.find((x) => x.name === '李慎')?.state).toBe('右手划伤');
   });
 });
+
+/* ---------------- 前情摘要量化滑窗（前缀缓存友好排布） ---------------- */
+
+describe('buildSummariesText 量化滑窗', () => {
+  // 一卷 40 章、摘要各约 800 字，方便越过 12000/16000 两条线
+  function bigOutline(n: number): Outline {
+    return {
+      premise: 'p', genre: 'g', coreConflict: 'c', endingVision: 'e', styleGuide: 's',
+      volumes: [{ id: 'v01', title: '卷一', summary: '', chapters: Array.from({ length: n }, (_, i) => ({
+        id: `v01c${String(i + 1).padStart(3, '0')}`, title: `章${i + 1}`, beat: 'b', status: 'todo' as const,
+      })) }],
+    };
+  }
+  const textOf = (upto: number) => {
+    const o = bigOutline(40);
+    const summaries: Record<string, string> = {};
+    for (let i = 1; i <= upto; i++) summaries[`v01c${String(i).padStart(3, '0')}`] = `S${i}·${'x'.repeat(800)}`;
+    return { block: buildSummariesText(o, summaries, `v01c${String(upto + 1).padStart(3, '0')}`), summaries };
+  };
+
+  it('预算内纯追加：后一章的块以前一章的块逐字节开头', () => {
+    const a = textOf(10).block;   // 10*~815 ≈ 8150 < 16000，未饱和
+    const b = textOf(11).block;
+    expect(b.startsWith(a)).toBe(true);
+    expect(b).toContain('S11');
+  });
+
+  it('越过 预算+滑窗 才成批丢弃；丢弃后的下一次增长仍是纯追加（头部锁死）', () => {
+    // 19 条 ≈ 15500：未越过 16000 → 不丢
+    const sat = textOf(20).block;  // 20 条首次越过 → 成批裁回 ≤12000
+    const next = textOf(21).block; // 裁后 ~12000 内追加一条，不应再动头部
+    expect(sat).not.toContain('《章1》'); // 20 条时确实发生了丢弃
+    expect(next.startsWith(sat)).toBe(true);
+    expect(next).toContain('《章21》');
+  });
+
+  it('整条进出：预算溢出不再产生"半条摘要"；仅单条超定长上限时定长截断', () => {
+    const block = textOf(25).block;
+    expect(block).not.toContain('…'); // 800 字未超单条 1500 上限，块内不该有任何省略号
+    const o = bigOutline(3);
+    const huge = { v01c001: 'H'.repeat(3000), v01c002: '短' };
+    const b2 = buildSummariesText(o, huge, 'v01c003');
+    expect(b2).toContain('H'.repeat(1500) + '…'); // 定长切点：恒定 1500，与预算余量无关
+    expect(b2).not.toContain('H'.repeat(1501));
+  });
+});
