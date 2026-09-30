@@ -569,6 +569,48 @@ textarea { resize: vertical; line-height: 1.6; }
 .hk-role { font-size: 11px; color: var(--text-faint); margin-left: 4px; }
 .hk-tag { font-size: 11.5px; color: var(--text-faint); white-space: nowrap; }
 
+/* ---------------- 世界事件时间线 ---------------- */
+.tl-filter { width: 180px; }
+.tl-vol {
+  font-size: 12px; font-weight: 700; color: var(--accent);
+  letter-spacing: .5px; margin: 4px 0 10px;
+}
+.tl-item {
+  display: grid; grid-template-columns: 18px 1fr; gap: 0 10px;
+  position: relative; padding-bottom: 14px;
+}
+/* 竖连线：除末项外，从本点到下一点 */
+.tl-item::before {
+  content: ''; position: absolute; left: 8px; top: 16px; bottom: 0;
+  width: 2px; background: var(--line);
+}
+.tl-item:last-child::before { display: none; }
+.tl-dot {
+  width: 12px; height: 12px; border-radius: 50%; margin-top: 4px;
+  border: 2px solid var(--accent); background: var(--panel); z-index: 1; justify-self: center;
+}
+.tl-dot.manual { border-color: var(--accent-focus); background: var(--accent-focus); }
+.tl-body { min-width: 0; }
+.tl-head { display: flex; align-items: center; gap: 8px; }
+.tl-ch {
+  background: none; border: none; color: var(--accent); cursor: pointer;
+  font-size: 12.5px; font-weight: 600; padding: 0; text-align: left;
+}
+.tl-ch:hover { text-decoration: underline; }
+.tl-when { font-size: 11.5px; color: var(--text-faint); }
+.tl-src {
+  font-size: 10.5px; padding: 1px 7px; border-radius: var(--r-pill);
+  background: var(--gray-3); color: var(--text-faint);
+}
+.tl-src.manual { background: var(--danger-soft); color: var(--accent-focus); }
+.tl-title { font-size: 14px; font-weight: 600; margin-top: 3px; }
+.tl-detail { font-size: 12.5px; color: var(--text-dim); margin-top: 2px; line-height: 1.55; }
+.tl-actors { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 6px; }
+.tl-chip {
+  font-size: 11px; padding: 1px 8px; border-radius: var(--r-pill);
+  background: var(--gray-3); color: var(--text-dim);
+}
+
 /* ---------------- 伏笔登记表 ---------------- */
 .fs-panel {
   border: 1px solid var(--line);

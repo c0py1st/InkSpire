@@ -1,6 +1,6 @@
 /** 与后端的全部交互。SSE 统一走 sse()。 */
 import type {
-  AppConfig, Bundle, ChatMessageRecord, ChapterFile, ChapterStatus, CharacterCard, ConsistencyIssue, Foreshadow, GenChapterResult, HealthReport, Kernel, Outline, ProjectMeta, ProposalRequest, SearchHit, Suggestion, Volume, VolumeBrief,
+  AppConfig, Bundle, ChatMessageRecord, ChapterFile, ChapterStatus, CharacterCard, ConsistencyIssue, Foreshadow, GenChapterResult, HealthReport, Kernel, Outline, ProjectMeta, ProposalRequest, SearchHit, StoryEvent, Suggestion, Volume, VolumeBrief,
 } from '../../../shared/src/types';
 
 async function json<T>(res: Response): Promise<T> {
@@ -138,6 +138,13 @@ export const api = {
   health: (slug: string) => get<HealthReport>(`/api/projects/${slug}/health`),
   /** 全书 L0 重跑（纯代码零成本），返回汇总 */
   l0Rerun: (slug: string) => post<{ checked: number; flagged: number; high: number }>(`/api/projects/${slug}/l0-rerun`, {}),
+
+  /** 世界事件账本 */
+  getEvents: (slug: string) => get<StoryEvent[]>(`/api/projects/${slug}/events`),
+  addEvent: (slug: string, body: { chapterId: string; title: string; detail?: string; actors?: string[]; whenInStory?: string }) =>
+    post<{ ok: true; id: string; events: StoryEvent[] }>(`/api/projects/${slug}/events`, body),
+  deleteEvent: (slug: string, id: string) =>
+    del<{ ok: true; events: StoryEvent[] }>(`/api/projects/${slug}/events/${encodeURIComponent(id)}`),
 
   // 流式任务
   wizardKernel: (ideaPrompt: string, scale: { volumeCount: number; chaptersPerVolume: number; wordsPerChapter: number }, onDelta: (t: string) => void) =>

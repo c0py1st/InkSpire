@@ -1,11 +1,11 @@
 import { create } from 'zustand';
 import type {
-  AppConfig, Bundle, ChapterStatus, CharacterCard, Foreshadow, GenChapterResult, HealthReport, Outline, ProjectMeta, ProposalKind,
+  AppConfig, Bundle, ChapterStatus, CharacterCard, Foreshadow, GenChapterResult, HealthReport, Outline, ProjectMeta, ProposalKind, StoryEvent,
 } from '../../../shared/src/types';
 import { atParagraphStart, ensureParagraphIndent } from '../../../shared/src/util';
 import { api } from '../api/client';
 
-export type CenterView = 'outline' | 'editor' | 'bible' | 'health';
+export type CenterView = 'outline' | 'editor' | 'bible' | 'health' | 'timeline';
 export type SaveState = 'idle' | 'dirty' | 'saving' | 'saved';
 export type ThemePref = 'light' | 'dark' | 'system';
 
@@ -72,6 +72,7 @@ interface Store {
   bundle: (Bundle & { wordCounts: Record<string, number> }) | null;
   health: HealthReport | null;
   healthLoading: boolean;
+  events: StoryEvent[] | null;
 
   // 编辑器
   chapter: ChapterDraft | null;
@@ -103,6 +104,9 @@ interface Store {
   loadProjects: () => Promise<void>;
   loadHealth: () => Promise<void>;
   rerunHealthL0: () => Promise<void>;
+  loadEvents: () => Promise<void>;
+  addStoryEvent: (body: { chapterId: string; title: string; detail?: string; actors?: string[]; whenInStory?: string }) => Promise<boolean>;
+  deleteStoryEvent: (id: string) => Promise<void>;
   openProject: (slug: string) => Promise<void>;
   backHome: () => void;
   reloadBundle: () => Promise<void>;
@@ -188,6 +192,7 @@ export const useStore = create<Store>((set, get) => ({
   bundle: null,
   health: null,
   healthLoading: false,
+  events: null,
 
   chapter: null,
   saveState: 'idle',
@@ -299,10 +304,45 @@ export const useStore = create<Store>((set, get) => ({
     }
   },
 
+  async loadEvents() {
+    const { slug } = get();
+    if (!slug) return;
+    try {
+      set({ events: await api.getEvents(slug) });
+    } catch (err) {
+      get().toast(`事件账本读取失败：${(err as Error).message}`, 'error');
+    }
+  },
+
+  async addStoryEvent(body) {
+    const { slug } = get();
+    if (!slug) return false;
+    try {
+      const r = await api.addEvent(slug, body);
+      set({ events: r.events });
+      get().toast('已补记事件', 'ok');
+      return true;
+    } catch (err) {
+      get().toast(`补记失败：${(err as Error).message}`, 'error');
+      return false;
+    }
+  },
+
+  async deleteStoryEvent(id) {
+    const { slug } = get();
+    if (!slug) return;
+    try {
+      const r = await api.deleteEvent(slug, id);
+      set({ events: r.events });
+    } catch (err) {
+      get().toast(`删除失败：${(err as Error).message}`, 'error');
+    }
+  },
+
   async openProject(slug) {
     try {
       const bundle = await api.getBundle(slug);
-      set({ slug, bundle, centerView: 'outline', chapter: null, suggestionsSeen: bundle.suggestions.length, health: null });
+      set({ slug, bundle, centerView: 'outline', chapter: null, suggestionsSeen: bundle.suggestions.length, health: null, events: null });
     } catch (err) {
       get().toast(`打开作品失败：${(err as Error).message}`, 'error');
     }
@@ -313,7 +353,7 @@ export const useStore = create<Store>((set, get) => ({
     if (prev.chapter && prev.saveState === 'dirty') {
       void prev.saveChapter();
     }
-    set({ slug: null, bundle: null, chapter: null, centerView: 'outline', health: null });
+    set({ slug: null, bundle: null, chapter: null, centerView: 'outline', health: null, events: null });
     void get().loadProjects();
   },
 
