@@ -119,6 +119,23 @@ export interface Suggestion {
   createdAt: string;
 }
 
+/**
+ * 世界事件账本的一条（data/<书>/events.json，真相源、数组形）：
+ * 故事世界里发生的、跨章仍有意义的事实——不同于人物状态（谁怎么样），事件记"发生了什么"。
+ * 挂在来源章下排序（零填充章 id 字典序=阅读序）；whenInStory 为故事内时刻的自由文本
+ * （"三年初冬""断臂之次日"，架空历法亦可），actors 是参与人物/势力的自由名单。
+ */
+export interface StoryEvent {
+  id: string;
+  chapterId: string;               // 来源章（必填，定位与排序键）
+  title: string;                   // 事件一句话
+  detail?: string;                 // 展开说明
+  actors?: string[];               // 参与人物/势力（自由文本名单）
+  whenInStory?: string;            // 故事内时刻提示（自由文本）
+  source: 'auto' | 'manual';       // 归档提取 vs 作者补记
+  at: string;                      // 落盘时间 ISO
+}
+
 /** 采纳大纲修订建议：把 content 写回 sourceChapterId 章的 beat。命中返回 true（就地修改传入的 outline） */
 export function applyOutlineSuggestion(outline: Outline, sug: Suggestion): boolean {
   if (!sug.sourceChapterId) return false;

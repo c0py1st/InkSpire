@@ -28,6 +28,10 @@ beforeAll(() => {
   }));
   fs.writeFileSync(path.join(dir, 'chapters/v01c001.md'), '---\ntitle: 第一章\nstatus: draft\n---\n　　甲刀埋进了雪里，乙线浮出水面。');
   fs.writeFileSync(path.join(dir, 'chapters/v01c002.md'), '---\ntitle: 第二章\nstatus: todo\n---\n');
+  fs.writeFileSync(path.join(dir, 'events.json'), JSON.stringify([
+    { id: 'e1', chapterId: 'v01c001', title: '盐仓失火', actors: ['李慎', '周主簿'], whenInStory: '雪夜', source: 'auto', at: '' },
+    { id: 'e2', chapterId: 'v01c002', title: '获得提刑司勘合', actors: ['李慎'], source: 'manual', at: '' },
+  ]));
 });
 
 describe('工具注册表', () => {
@@ -106,5 +110,25 @@ describe('executeTool 校验与行为', () => {
     // 时间线按章排序：第一章应排在第二章前
     expect(r.content.indexOf('第一章')).toBeLessThan(r.content.indexOf('第二章'));
     expect(r.detail).toContain('2 节点');
+  });
+
+  it('read_timeline：全账/actor 过滤/uptoChapter 截断/非法章号拒绝', () => {
+    const all = executeTool(SLUG, call('read_timeline', {}));
+    expect(all.ok).toBe(true);
+    expect(all.content).toContain('盐仓失火');
+    expect(all.content).toContain('获得提刑司勘合');
+    expect(all.detail).toContain('2/2');
+
+    const byActor = executeTool(SLUG, call('read_timeline', { actor: '周主簿' }));
+    expect(byActor.content).toContain('盐仓失火');
+    expect(byActor.content).not.toContain('获得提刑司勘合');
+    expect(byActor.content).toContain('雪夜'); // 时刻提示带出
+    expect(byActor.detail).toContain('1/2');
+
+    const upto = executeTool(SLUG, call('read_timeline', { uptoChapter: 'v01c001' }));
+    expect(upto.content).toContain('盐仓失火');
+    expect(upto.content).not.toContain('获得提刑司勘合');
+
+    expect(executeTool(SLUG, call('read_timeline', { uptoChapter: '乱码' })).ok).toBe(false);
   });
 });

@@ -1,11 +1,11 @@
 import { Router } from 'express';
 import {
-  applyOutlineSuggestion, applyStateSuggestion, ChapterFile, CharacterCard, Foreshadow, Outline,
+  applyOutlineSuggestion, applyStateSuggestion, ChapterFile, CharacterCard, Foreshadow, Outline, StoryEvent,
 } from '../../../shared/src/types';
 import { countChars } from '../../../shared/src/util';
 import {
-  listChapterBackups, listChapters, loadBundle, loadChat, loadForeshadows, loadOutline, loadSummaries, readChapter, readChapterBackup,
-  saveCharacters, saveChapterBody, saveChat, saveOutline, saveForeshadows, saveSummaries, saveSuggestions, saveWorldview,
+  listChapterBackups, listChapters, loadBundle, loadChat, loadEvents, loadForeshadows, loadOutline, loadSummaries, readChapter, readChapterBackup,
+  saveCharacters, saveChapterBody, saveChat, saveEvents, saveOutline, saveForeshadows, saveSummaries, saveSuggestions, saveWorldview,
 } from '../fs-store';
 import { searchChapters } from '../chapter-index';
 import { loadCacheStats, resetCacheStats } from '../cache-stats';
@@ -125,6 +125,57 @@ projectRouter.put('/:slug/foreshadows', (req, res) => {
     const items = sanitizeForeshadows(req.body);
     saveForeshadows(req.params.slug, items);
     res.json({ ok: true, count: items.length });
+  } catch (err) {
+    res.status(400).json({ error: (err as Error).message });
+  }
+});
+
+/* ---------------- 世界事件账本（时间线，真相源 events.json） ---------------- */
+
+projectRouter.get('/:slug/events', (req, res) => {
+  try {
+    res.json(loadEvents(req.params.slug));
+  } catch (err) {
+    res.status(404).json({ error: (err as Error).message });
+  }
+});
+
+/** 作者手动补记一条事件（来源章必须在大纲里；标 manual，重归档不会被覆盖） */
+projectRouter.post('/:slug/events', (req, res) => {
+  try {
+    const body = req.body as { chapterId?: string; title?: string; detail?: string; actors?: string[]; whenInStory?: string };
+    const chapterId = String(body?.chapterId ?? '');
+    const title = String(body?.title ?? '').trim();
+    if (!title) return res.status(400).json({ error: '事件标题不能为空' });
+    const outline = loadOutline(req.params.slug);
+    if (!outline) return res.status(400).json({ error: '本书还没有大纲' });
+    const known = outline.volumes.some((v) => v.chapters.some((c) => c.id === chapterId));
+    if (!known) return res.status(400).json({ error: `来源章「${chapterId}」不在大纲中` });
+    const evt: StoryEvent = {
+      id: `ev-${chapterId}-m${Date.now()}`,
+      chapterId,
+      title: title.slice(0, 160),
+      ...(body.detail?.trim() ? { detail: body.detail.trim().slice(0, 600) } : {}),
+      ...((body.actors ?? []).some((a) => a?.trim()) ? { actors: (body.actors ?? []).map((a) => a.trim().slice(0, 30)).filter(Boolean).slice(0, 8) } : {}),
+      ...(body.whenInStory?.trim() ? { whenInStory: body.whenInStory.trim().slice(0, 60) } : {}),
+      source: 'manual',
+      at: new Date().toISOString(),
+    };
+    const next = [...loadEvents(req.params.slug), evt].sort((a, b) => a.chapterId.localeCompare(b.chapterId) || a.at.localeCompare(b.at));
+    saveEvents(req.params.slug, next);
+    res.json({ ok: true, id: evt.id, events: next });
+  } catch (err) {
+    res.status(400).json({ error: (err as Error).message });
+  }
+});
+
+projectRouter.delete('/:slug/events/:id', (req, res) => {
+  try {
+    const all = loadEvents(req.params.slug);
+    const next = all.filter((e) => e.id !== req.params.id);
+    if (next.length === all.length) return res.status(404).json({ error: '事件不存在' });
+    saveEvents(req.params.slug, next);
+    res.json({ ok: true, events: next });
   } catch (err) {
     res.status(400).json({ error: (err as Error).message });
   }

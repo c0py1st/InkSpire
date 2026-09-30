@@ -3,7 +3,7 @@ import path from 'node:path';
 import YAML from 'yaml';
 import {
   Bundle, ChapterFile, ChapterStatus, CharacterCard, ChatMessageRecord, ChatProposalRecord, ChatStepRecord,
-  Foreshadow, Outline, ProjectMeta, Suggestion, VolumeRecap,
+  Foreshadow, Outline, ProjectMeta, StoryEvent, Suggestion, VolumeRecap,
 } from '../../shared/src/types';
 import { countChars } from '../../shared/src/util';
 import { DATA_DIR } from './config';
@@ -256,6 +256,49 @@ export function loadForeshadows(slug: string): Foreshadow[] {
 
 export function saveForeshadows(slug: string, items: Foreshadow[]): void {
   writeJson(jfile(slug, 'foreshadows.json'), items);
+}
+
+/* ---------------- 世界事件账本（events.json，真相源） ---------------- */
+
+/** 白名单消毒：脏条目丢弃不丢全档；source 缺省按 manual（手改文件漏字段不算废） */
+export function sanitizeStoryEvents(input: unknown): StoryEvent[] {
+  if (!Array.isArray(input)) return [];
+  const out: StoryEvent[] = [];
+  for (const e of input.slice(0, 2000)) {
+    if (!e || typeof e !== 'object' || Array.isArray(e)) continue;
+    const x = e as Record<string, unknown>;
+    if (typeof x.id !== 'string' || !x.id.trim()) continue;
+    if (typeof x.chapterId !== 'string' || !CHAPTER_ID_RE.test(x.chapterId)) continue;
+    if (typeof x.title !== 'string' || !x.title.trim()) continue;
+    const actors = Array.isArray(x.actors)
+      ? x.actors.filter((a): a is string => typeof a === 'string' && !!a.trim()).map((a) => a.trim().slice(0, 30)).slice(0, 8)
+      : [];
+    out.push({
+      id: x.id.slice(0, 40),
+      chapterId: x.chapterId,
+      title: x.title.trim().slice(0, 160),
+      ...(typeof x.detail === 'string' && x.detail.trim() ? { detail: x.detail.trim().slice(0, 600) } : {}),
+      ...(actors.length ? { actors } : {}),
+      ...(typeof x.whenInStory === 'string' && x.whenInStory.trim() ? { whenInStory: x.whenInStory.trim().slice(0, 60) } : {}),
+      source: x.source === 'auto' ? 'auto' : 'manual',
+      at: typeof x.at === 'string' ? x.at.slice(0, 40) : new Date().toISOString(),
+    });
+  }
+  return out;
+}
+
+export function loadEvents(slug: string): StoryEvent[] {
+  return sanitizeStoryEvents(readJson<unknown>(jfile(slug, 'events.json'), []));
+}
+
+export function saveEvents(slug: string, items: StoryEvent[]): void {
+  writeJson(jfile(slug, 'events.json'), items);
+}
+
+/** 重归档某章：其旧的 auto 事件整批换成新提取，manual 补记永不受影响；按章序+落盘序归位 */
+export function mergeChapterAutoEvents(existing: StoryEvent[], chapterId: string, incoming: StoryEvent[]): StoryEvent[] {
+  const kept = existing.filter((e) => !(e.source === 'auto' && e.chapterId === chapterId));
+  return [...kept, ...incoming].sort((a, b) => a.chapterId.localeCompare(b.chapterId) || a.at.localeCompare(b.at));
 }
 
 /* ---------------- 对话持久化（chat.json） ---------------- */

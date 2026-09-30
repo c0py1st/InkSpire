@@ -19,8 +19,8 @@ import { chatPrompt } from '../ai/prompts/chat';
 import { summaryPrompt } from '../ai/prompts/summary';
 import { consistencyPrompt } from '../ai/prompts/consistency';
 import {
-  getMeta, listChapters, loadBundle, loadOutline, loadRecaps, loadSummaries, loadSuggestions, readChapter,
-  saveChapterBody, saveOutline, saveRecaps, saveSuggestions, saveSummaries,
+  getMeta, listChapters, loadBundle, loadEvents, loadOutline, loadRecaps, loadSummaries, loadSuggestions, mergeChapterAutoEvents, readChapter,
+  saveChapterBody, saveEvents, saveOutline, saveRecaps, saveSuggestions, saveSummaries,
 } from '../fs-store';
 import { recapFingerprint, stateAtChapter } from '../../../shared/src/types';
 import { loadCacheStats, recordUsage } from '../cache-stats';
@@ -570,10 +570,32 @@ export async function finalizeChapterCore(
     worldNotes: string[];
     stateChanges?: Array<{ name: string; newState: string; reason?: string }>;
     beatDrift?: { drifted?: boolean; problem?: string; newBeat?: string };
+    events?: Array<{ title?: string; detail?: string; actors?: string[]; when?: string }>;
   }>(raw);
 
   const summaries = { ...bundle.summaries, [chapterId]: parsed.summary };
   saveSummaries(slug, summaries);
+
+  // 世界事件账本：本章旧的 auto 提取整批换新，作者 manual 补记不动；失败只记日志不拖累归档
+  try {
+    const autoEvents = (parsed.events ?? []).slice(0, 4).flatMap((ev, k) => {
+      const title = ev?.title?.trim();
+      if (!title) return [];
+      return [{
+        id: `ev-${chapterId}-${Date.now()}-${k}`,
+        chapterId,
+        title: title.slice(0, 160),
+        ...(ev.detail?.trim() ? { detail: ev.detail.trim().slice(0, 600) } : {}),
+        ...((ev.actors ?? []).some((a) => a?.trim()) ? { actors: (ev.actors ?? []).filter((a) => a?.trim()).map((a) => a.trim().slice(0, 30)).slice(0, 8) } : {}),
+        ...(ev.when?.trim() ? { whenInStory: ev.when.trim().slice(0, 60) } : {}),
+        source: 'auto' as const,
+        at: new Date().toISOString(),
+      }];
+    });
+    saveEvents(slug, mergeChapterAutoEvents(loadEvents(slug), chapterId, autoEvents));
+  } catch (err) {
+    console.error('[events] 事件提取落盘失败（不影响归档）：', (err as Error).message);
+  }
 
   const suggestions = loadSuggestions(slug);
   const existingNames = new Set(bundle.characters.map((c) => c.name));

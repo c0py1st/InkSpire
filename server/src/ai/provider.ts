@@ -110,6 +110,7 @@ function yieldMockJson(promptHint: string): string {
       newCharacters: [],
       worldNotes: [],
       stateChanges: [{ name: '李慎', newState: '右手在停尸房被锈蚀铁架划伤，已用烧酒简单处理，验尸时开始结痂发痒', reason: '本章查验盐车时留下新伤' }],
+      events: [{ title: '盐车命案首次开堂验尸，物证封匣入库', detail: '李慎当众指出致命伤在咽喉而非车轮，县令命将沾血车辙布收匣封存', actors: ['李慎', '秦伯', '周主簿'], when: '雪夜当夜' }],
       ...(drift ? {
         beatDrift: {
           drifted: true,

@@ -1,6 +1,6 @@
 import type { Foreshadow, ToolCall, ToolSpec } from '../../../shared/src/types';
 import {
-  loadCharacters, loadForeshadows, loadOutline, readChapter, saveForeshadows,
+  loadCharacters, loadEvents, loadForeshadows, loadOutline, readChapter, saveForeshadows,
 } from '../fs-store';
 import { searchChapters } from '../chapter-index';
 import { locateChapter } from './memory';
@@ -21,6 +21,7 @@ export const TOOL_POLICIES: Record<string, ToolPolicy> = {
   search_chapters: 'execute',
   read_character_card: 'execute',
   read_foreshadow_list: 'execute',
+  read_timeline: 'execute',
   read_chapter: 'execute',
   register_foreshadow: 'execute',
   propose_chapter_content: 'propose',
@@ -49,6 +50,20 @@ export const TOOL_SPECS: ToolSpec[] = [
         type: 'object',
         properties: { name: { type: 'string', description: '人物姓名' } },
         required: ['name'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'read_timeline',
+      description: '读取世界事件时间线（按章序的重要事件：死亡/背叛/结案/启程/权力变更等，含故事内时刻提示与参与人物）。回答"到第X章世界发生了什么""某人物/势力都做过或遭遇过什么大事"这类问题时使用；可用 actor 过滤人物或势力名。',
+      parameters: {
+        type: 'object',
+        properties: {
+          actor: { type: 'string', description: '可选：只保留参与人物/势力名包含该词的事件' },
+          uptoChapter: { type: 'string', description: '可选：只列到这一章为止（含），形如 v01c003' },
+        },
       },
     },
   },
@@ -216,6 +231,28 @@ export function executeTool(slug: string, call: ToolCall): ToolOutcome {
       };
       const text = items.map((f) => `- [${f.status === 'open' ? '未收' : f.status === 'resolved' ? '已收' : '废弃'}] ${f.content}（埋${titleOf(f.setupChapterId)}${f.payoffChapterId ? `，收${titleOf(f.payoffChapterId)}` : ''}）`).join('\n');
       return { ok: true, content: cap(text), detail: `读伏笔表 → ${items.length} 条` };
+    }
+    case 'read_timeline': {
+      const actor = str(args.actor, 20);
+      const upto = str(args.uptoChapter, 10);
+      if (upto && !CHAPTER_ID_RE.test(upto)) return fail(`uptoChapter「${upto}」格式不合法（形如 v01c003）`);
+      const all = loadEvents(slug);
+      let items = all;
+      if (actor) items = items.filter((e) => (e.actors ?? []).some((a) => a.includes(actor)) || e.title.includes(actor));
+      if (upto) items = items.filter((e) => e.chapterId <= upto);
+      if (!items.length) {
+        return { ok: true, content: actor ? `事件账本里没有涉及「${actor}」的事件（全账本 ${all.length} 条）。` : '世界事件账本为空（章节归档后自动提取，也可在时间线页手记）。', detail: `读时间线 → 0/${all.length} 条` };
+      }
+      const outline = loadOutline(slug);
+      const chTitle = (cid: string) => {
+        if (!outline) return cid;
+        try { return locateChapter(outline, cid).chapter.title; } catch { return cid; }
+      };
+      const text = items
+        .slice(-40)
+        .map((e) => `- ${e.chapterId}《${chTitle(e.chapterId)}》${e.whenInStory ? `【${e.whenInStory}】` : ''} ${e.title}${e.actors?.length ? `（${e.actors.join('、')}）` : ''}${e.source === 'manual' ? '[作者补记]' : ''}`)
+        .join('\n');
+      return { ok: true, content: cap(text), detail: `读时间线 → ${items.length}/${all.length} 条` };
     }
     case 'read_chapter': {
       const cid = str(args.chapterId, 10) ?? '';
