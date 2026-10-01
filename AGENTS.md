@@ -36,7 +36,9 @@
   - [完成] D 世界事件时间线：events.json 双轨(auto/manual)+归档提取+read_timeline 工具+时间线视图(过滤/补记/删除，浏览器实测)
   - [完成] E 网文模式全家桶（作者拍板兼容路线+全做）：E1 爽点/钩子字段+按书开关(b648da5)
     / E3 节奏红线(44e4836) / E2 读者评审(c4ffb52) / E4 黄金三章(4d709a3)+两 bug 修复(89ea06d)
-  - [下一站] F Lorebook-lite（调研素材已备：ST 源码级机制清单在侧聊报告）
+  - [完成] F Lorebook-lite 世界书：lorebook.json 真相源+命中激活（触发词子串/scope 卷段章段/
+    常驻/契约条豁免预算/优先级整条进出）+prosePrompt 注入+`.index/lore-activated.json` 留痕+设定集编辑器
+  - [下一站] 待作者拍板：通读模式（全书连读+搜索高亮）/ Tauri 桌面打包 / 对话 agent 世界书工具（read_lorebook）
   - 每阶段独立提交、过全量门禁；推送等作者说"推送"
 
 ## 记忆分层同构提示

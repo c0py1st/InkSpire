@@ -1,7 +1,8 @@
 import type {
-  ChapterBeat, CharacterCard, Foreshadow, Outline, VolumeRecap,
+  ChapterBeat, CharacterCard, Foreshadow, LoreEntry, Outline, VolumeRecap,
 } from '../../../shared/src/types';
 import { recapFingerprint, stateAtChapter } from '../../../shared/src/types';
+import { activateLore, loreBlockText } from '../../../shared/src/lore';
 import type { ChapterContext } from './prompts/prose';
 
 /**
@@ -26,6 +27,7 @@ const SUMMARY_SLACK_CHARS = 4000;     // 量化滑窗余量：整块超过 预�
 const SUMMARY_DISCARD_BATCH = 8;      // 量化丢弃批（条）：丢弃数向上取整到此批的倍数，头部连续多章逐字节不变，前缀缓存才有命中窗口
 const SUMMARY_LINE_CAP = 1500;        // 单条定长截断上限：定长即字节稳定，不随预算余量浮动
 const PREV_TAIL_CHARS = 1500;
+const LORE_BUDGET_CHARS = 4000;   // 世界书本章激活注入的内容字符预算（contract 契约条豁免）
 
 export function buildSummariesText(
   outline: Outline,
@@ -116,6 +118,7 @@ export function buildChapterContext(args: {
   prevChapterContent?: string;   // 前一章全文（这里只取结尾）
   foreshadows?: Foreshadow[];    // 伏笔登记表
   currentVolumeOnlyCast?: boolean;
+  lorebook?: LoreEntry[];        // 世界书（命中激活注入；缺省/空 = 行为与此前完全一致）
 }): ChapterContext {
   const { outline, chapterId, characters } = args;
   const loc = locateChapter(outline, chapterId);
@@ -154,6 +157,31 @@ export function buildChapterContext(args: {
     }
   }
 
+  // 世界书本章激活：以「本章硬约束块 + 前情摘要」为语料扫 keys（中文按子串）。
+  // 语料刻意不含世界观/人物卡全文——那是常驻信息，触发词命中它们会让每条设定都像常驻。
+  const summariesText = buildSummariesText(outline, args.summaries, chapterId, args.recaps);
+  const foreshadowStr = foreshadowText(outline, args.foreshadows ?? [], chapterId);
+  let lore: string | undefined;
+  let loreTrace: ChapterContext['loreTrace'] | undefined;
+  if (args.lorebook && args.lorebook.length) {
+    const corpus = [
+      loc.chapter.title, loc.chapter.beat,
+      (loc.chapter.pov ?? ''), (loc.chapter.characters ?? []).join(' '),
+      loc.chapter.payoffPoint ?? '', loc.chapter.chapterHook ?? '',
+      prevTail, summariesText,
+    ].join('\n');
+    const { activated, dropped } = activateLore({
+      entries: args.lorebook,
+      order,
+      chapterId,
+      volumeId: vol.id,
+      corpus,
+      budgetChars: LORE_BUDGET_CHARS,
+    });
+    if (activated.length) lore = loreBlockText(activated);
+    loreTrace = { activated, dropped };
+  }
+
   return {
     outline,
     chapter: loc.chapter,
@@ -162,11 +190,12 @@ export function buildChapterContext(args: {
     volumeTitle: vol.title,
     volumeSummary: vol.summary,
     prevTail,
-    summaries: buildSummariesText(outline, args.summaries, chapterId, args.recaps),
-    foreshadow: foreshadowText(outline, args.foreshadows ?? [], chapterId),
+    summaries: summariesText,
+    foreshadow: foreshadowStr,
     cast,
     mentionOnly: mentionOnlyAll,
     recentHooks,
+    ...(lore ? { lore, loreTrace } : {}),
   };
 }
 

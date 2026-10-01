@@ -140,6 +140,36 @@ export interface StoryEvent {
   at: string;                      // 落盘时间 ISO
 }
 
+/**
+ * 世界书（Lorebook）条目（data/<书>/lorebook.json，真相源、数组形）：
+ * "设定按需激活"——正文生成时只在章级语料命中触发词时，才把该条设定注入 prompt，
+ * 避免世界观全文每章都吃预算。参考 SillyTavern 的角色书机制（只抄思想不抄代码，AGPL）。
+ * 语义要点：
+ * - keys 用**子串**匹配（中文没有词边界，不设全词匹配）；constant 常驻条豁免触发但吃预算；
+ * - contract 大纲契约条豁免预算（力量体系铁律这类，少而精，溢出也不丢）；
+ * - scope 限定生效章区间（含端点，按阅读序）；volumeId 限卷；都不填=全书；
+ * - priority 大者优先填预算，同值按文件序（稳定）。
+ */
+export interface LoreEntry {
+  id: string;
+  title: string;                 // 条名（展示与留痕用）
+  keys: string[];                // 触发词，任一在语料中出现即激活
+  content: string;               // 注入的设定正文
+  scope?: {
+    volumeId?: string;           // 仅该卷生效
+    chapterFrom?: string;        // 自本章（含，阅读序）起生效
+    chapterTo?: string;          // 至本章（含）生效
+  };
+  constant?: boolean;            // 常驻：不查触发词直接激活
+  contract?: boolean;            // 大纲契约：豁免预算裁剪
+  priority?: number;             // 预算竞争排序，默认 0
+  enabled?: boolean;             // 临时停用开关，缺省视为 true
+}
+
+/** 世界书激活留痕的一条（可重建缓存 .index/lore-activated.json，只记摘要不进真相源） */
+export interface LoreTraceItem { id: string; title: string; chars: number }
+export interface LoreTraceEntry { activated: LoreTraceItem[]; dropped: LoreTraceItem[]; at: string }
+
 /** 采纳大纲修订建议：把 content 写回 sourceChapterId 章的 beat。命中返回 true（就地修改传入的 outline） */
 export function applyOutlineSuggestion(outline: Outline, sug: Suggestion): boolean {
   if (!sug.sourceChapterId) return false;

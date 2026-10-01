@@ -4,8 +4,8 @@ import {
 } from '../../../shared/src/types';
 import { countChars } from '../../../shared/src/util';
 import {
-  getMeta, listChapterBackups, listChapters, loadBundle, loadChat, loadEvents, loadForeshadows, loadOutline, loadSummaries, readChapter, readChapterBackup,
-  saveCharacters, saveChapterBody, saveChat, saveEvents, saveMeta, saveOutline, saveForeshadows, saveSummaries, saveSuggestions, saveWorldview,
+  getMeta, listChapterBackups, listChapters, loadBundle, loadChat, loadEvents, loadForeshadows, loadLoreActivated, loadLorebook, loadOutline, loadSummaries, readChapter, readChapterBackup,
+  sanitizeLoreEntries, saveCharacters, saveChapterBody, saveChat, saveEvents, saveLorebook, saveMeta, saveOutline, saveForeshadows, saveSummaries, saveSuggestions, saveWorldview,
 } from '../fs-store';
 import { searchChapters } from '../chapter-index';
 import { loadCacheStats, resetCacheStats } from '../cache-stats';
@@ -189,6 +189,36 @@ projectRouter.delete('/:slug/events/:id', (req, res) => {
     res.json({ ok: true, events: next });
   } catch (err) {
     res.status(400).json({ error: (err as Error).message });
+  }
+});
+
+/* ---------------- 世界书（lorebook.json，真相源；命中激活在生成时算） ---------------- */
+
+projectRouter.get('/:slug/lorebook', (req, res) => {
+  try {
+    res.json(loadLorebook(req.params.slug));
+  } catch (err) {
+    res.status(404).json({ error: (err as Error).message });
+  }
+});
+
+/** 整表覆盖：服务端消毒后落盘并回显规范化结果（脏条目丢弃不报错，前端以回显为准） */
+projectRouter.put('/:slug/lorebook', (req, res) => {
+  try {
+    const clean = sanitizeLoreEntries(req.body);
+    saveLorebook(req.params.slug, clean);
+    res.json({ ok: true, entries: clean });
+  } catch (err) {
+    res.status(400).json({ error: (err as Error).message });
+  }
+});
+
+/** 各章最近一次生成的激活留痕（UI 展示"哪条被激活/被挤掉"） */
+projectRouter.get('/:slug/lorebook/trace', (req, res) => {
+  try {
+    res.json(loadLoreActivated(req.params.slug));
+  } catch (err) {
+    res.status(404).json({ error: (err as Error).message });
   }
 });
 

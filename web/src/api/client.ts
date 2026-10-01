@@ -1,6 +1,6 @@
 /** 与后端的全部交互。SSE 统一走 sse()。 */
 import type {
-  AppConfig, Bundle, ChatMessageRecord, ChapterFile, ChapterStatus, CharacterCard, ConsistencyIssue, Foreshadow, GenChapterResult, GoldenThreeReview, HealthReport, Kernel, Outline, ProjectMeta, ProposalRequest, ReaderReview, SearchHit, StoryEvent, Suggestion, Volume, VolumeBrief,
+  AppConfig, Bundle, ChatMessageRecord, ChapterFile, ChapterStatus, CharacterCard, ConsistencyIssue, Foreshadow, GenChapterResult, GoldenThreeReview, HealthReport, Kernel, LoreEntry, LoreTraceEntry, Outline, ProjectMeta, ProposalRequest, ReaderReview, SearchHit, StoryEvent, Suggestion, Volume, VolumeBrief,
 } from '../../../shared/src/types';
 
 async function json<T>(res: Response): Promise<T> {
@@ -154,6 +154,12 @@ export const api = {
     post<{ ok: true; id: string; events: StoryEvent[] }>(`/api/projects/${slug}/events`, body),
   deleteEvent: (slug: string, id: string) =>
     del<{ ok: true; events: StoryEvent[] }>(`/api/projects/${slug}/events/${encodeURIComponent(id)}`),
+
+  /** 世界书（Lorebook）：整表读/消毒后整表写；留痕为各章最近一次生成的激活快照 */
+  getLorebook: (slug: string) => get<LoreEntry[]>(`/api/projects/${slug}/lorebook`),
+  saveLorebook: (slug: string, entries: LoreEntry[]) =>
+    put<{ ok: true; entries: LoreEntry[] }>(`/api/projects/${slug}/lorebook`, entries),
+  getLoreTrace: (slug: string) => get<Record<string, LoreTraceEntry>>(`/api/projects/${slug}/lorebook/trace`),
 
   // 流式任务
   wizardKernel: (ideaPrompt: string, scale: { volumeCount: number; chaptersPerVolume: number; wordsPerChapter: number }, onDelta: (t: string) => void) =>

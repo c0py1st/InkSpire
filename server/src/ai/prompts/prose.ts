@@ -1,4 +1,4 @@
-import type { ChapterBeat, CharacterCard, Outline } from '../../../../shared/src/types';
+import type { ChapterBeat, CharacterCard, LoreEntry, Outline } from '../../../../shared/src/types';
 import { CREATOR_BASE } from './common';
 
 export interface ChapterContext {
@@ -14,6 +14,8 @@ export interface ChapterContext {
   cast: CharacterCard[];         // 出场人物完整卡片
   mentionOnly: CharacterCard[];  // 其他主要人物一句话版
   recentHooks?: Array<{ chapter: string; hook: string }>;  // 前文已用章末钩子（去重用；网文模式才有值）
+  lore?: string;                 // 世界书本章激活块文本（命中才出现；缺省 = 逐字节旧行为）
+  loreTrace?: { activated: LoreEntry[]; dropped: LoreEntry[] };  // 供生成路径落 .index 留痕，不进 prompt
 }
 
 /** 逐章正文的生成提示词。这是"严格按大纲"的核心环节。 */
@@ -35,6 +37,8 @@ ${[
   `本卷《${ctx.volumeTitle}》剧情弧：${ctx.volumeSummary}`,
   ctx.summaries ? `【前情摘要】\n${ctx.summaries}` : '【前情摘要】这是全书第一章。',
   ctx.foreshadow ? `【伏笔登记表（写作纪律，必须遵守）】\n${ctx.foreshadow}` : '',
+  // 世界书本章激活条目：只在有命中时出现（无条目/未命中 = 逐字节旧行为）
+  ctx.lore ? `【世界书·本章激活】（与出场人物卡同级的硬设定，不得违背）\n${ctx.lore}` : '',
   // ↓ 排布即缓存策略：前面的块跨章逐字节稳定（DeepSeek 前缀缓存按最长公共前缀命中），
   // 每章都变的块（在场人物卡/上一章结尾/本章约束）一律压到生成点之前。
   ctx.mentionOnly.length

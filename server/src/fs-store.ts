@@ -3,7 +3,7 @@ import path from 'node:path';
 import YAML from 'yaml';
 import {
   Bundle, ChapterFile, ChapterStatus, CharacterCard, ChatMessageRecord, ChatProposalRecord, ChatStepRecord,
-  Foreshadow, Outline, ProjectMeta, StoryEvent, Suggestion, VolumeRecap,
+  Foreshadow, LoreEntry, LoreTraceEntry, LoreTraceItem, Outline, ProjectMeta, StoryEvent, Suggestion, VolumeRecap,
 } from '../../shared/src/types';
 import { countChars } from '../../shared/src/util';
 import { DATA_DIR } from './config';
@@ -304,6 +304,77 @@ export function saveEvents(slug: string, items: StoryEvent[]): void {
 export function mergeChapterAutoEvents(existing: StoryEvent[], chapterId: string, incoming: StoryEvent[]): StoryEvent[] {
   const kept = existing.filter((e) => !(e.source === 'auto' && e.chapterId === chapterId));
   return [...kept, ...incoming].sort((a, b) => a.chapterId.localeCompare(b.chapterId) || a.at.localeCompare(b.at));
+}
+
+/* ---------------- 世界书（lorebook.json，真相源） ---------------- */
+
+const LORE_MAX_ENTRIES = 500;
+
+/** 白名单消毒：脏条目整条丢弃不丢全档（与 sanitizeStoryEvents 同一纪律） */
+export function sanitizeLoreEntries(input: unknown): LoreEntry[] {
+  if (!Array.isArray(input)) return [];
+  const out: LoreEntry[] = [];
+  for (const e of input.slice(0, LORE_MAX_ENTRIES)) {
+    if (!e || typeof e !== 'object' || Array.isArray(e)) continue;
+    const x = e as Record<string, unknown>;
+    if (typeof x.id !== 'string' || !x.id.trim()) continue;
+    if (typeof x.title !== 'string' || !x.title.trim()) continue;
+    if (typeof x.content !== 'string' || !x.content.trim()) continue;
+    const keys = Array.isArray(x.keys)
+      ? x.keys.filter((k): k is string => typeof k === 'string' && !!k.trim()).map((k) => k.trim().slice(0, 40)).slice(0, 20)
+      : [];
+    const entry: LoreEntry = {
+      id: x.id.trim().slice(0, 40),
+      title: x.title.trim().slice(0, 80),
+      keys,
+      content: x.content.trim().slice(0, 4000),
+    };
+    if (x.scope && typeof x.scope === 'object' && !Array.isArray(x.scope)) {
+      const s = x.scope as Record<string, unknown>;
+      const vol = typeof s.volumeId === 'string' && s.volumeId.trim() ? s.volumeId.trim().slice(0, 12) : '';
+      const from = typeof s.chapterFrom === 'string' && CHAPTER_ID_RE.test(s.chapterFrom.trim()) ? s.chapterFrom.trim() : '';
+      const to = typeof s.chapterTo === 'string' && CHAPTER_ID_RE.test(s.chapterTo.trim()) ? s.chapterTo.trim() : '';
+      if (vol || from || to) entry.scope = { ...(vol ? { volumeId: vol } : {}), ...(from ? { chapterFrom: from } : {}), ...(to ? { chapterTo: to } : {}) };
+    }
+    if (x.constant === true) entry.constant = true;
+    if (x.contract === true) entry.contract = true;
+    if (typeof x.priority === 'number' && Number.isFinite(x.priority)) entry.priority = Math.max(-100, Math.min(100, Math.round(x.priority)));
+    if (x.enabled === false) entry.enabled = false;
+    out.push(entry);
+  }
+  return out;
+}
+
+export function loadLorebook(slug: string): LoreEntry[] {
+  return sanitizeLoreEntries(readJson<unknown>(jfile(slug, 'lorebook.json'), []));
+}
+
+export function saveLorebook(slug: string, entries: LoreEntry[]): void {
+  writeJson(jfile(slug, 'lorebook.json'), entries);
+}
+
+/* ---- 激活留痕（.index/lore-activated.json，可重建缓存）：每章最近一次生成的命中/丢弃 ---- */
+
+const LORE_TRACE_MAX_CHAPTERS = 300;
+
+function traceItems(list: LoreEntry[]): LoreTraceItem[] {
+  return list.map((e) => ({ id: e.id, title: e.title, chars: e.content.length }));
+}
+
+/** 留痕只记 id/标题/字数——真相源与缓存各安其位，删缓存零损失 */
+export function saveLoreActivated(slug: string, chapterId: string, activated: LoreEntry[], dropped: LoreEntry[]): void {
+  const file = indexFile(slug, 'lore-activated.json');
+  const store = (readJson<Record<string, unknown>>(file, {}) ?? {}) as Record<string, LoreTraceEntry>;
+  store[chapterId] = { activated: traceItems(activated), dropped: traceItems(dropped), at: new Date().toISOString() };
+  const ids = Object.keys(store);
+  if (ids.length > LORE_TRACE_MAX_CHAPTERS) {
+    for (const id of ids.sort().slice(0, ids.length - LORE_TRACE_MAX_CHAPTERS)) delete store[id];
+  }
+  writeJson(file, store);
+}
+
+export function loadLoreActivated(slug: string): Record<string, LoreTraceEntry> {
+  return (readJson<Record<string, unknown>>(indexFile(slug, 'lore-activated.json'), {}) ?? {}) as Record<string, LoreTraceEntry>;
 }
 
 /* ---------------- 对话持久化（chat.json） ---------------- */
