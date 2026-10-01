@@ -407,6 +407,25 @@ export interface ReaderReview {
   topFixes: string[];           // ≤3 条按影响排序的可执行修改
 }
 
+/* ---------------- 黄金三章评审（E4） ---------------- */
+
+export type GoldenVerdict = 'GO' | 'REVISE' | 'REWRITE';
+
+export interface GoldenChapter {
+  index: number;                       // 第几章（1 起）
+  title: string;
+  chapterId: string;
+  verdict: GoldenVerdict;
+  hookNote: string;                    // 章末钩子/追读力一句评
+  grievances: ReviewGrievance[];       // 带引证，服务端验真
+}
+export interface GoldenThreeReview {
+  chapters: GoldenChapter[];
+  retentionScore: number;              // 0~10：三章合力把读者留住的把握
+  overall: string;                     // 一句话开篇诊断
+  fixes: string[];                     // 按影响排序
+}
+
 /* ---------------- 内置预设 ---------------- */
 
 export const PROVIDER_PRESETS = [

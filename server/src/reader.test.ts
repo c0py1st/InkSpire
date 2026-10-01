@@ -74,3 +74,49 @@ describe('normalizeReaderReview', () => {
     expect(r!.personas[0].grievances).toHaveLength(1);
   });
 });
+
+/* ---------------- E4 黄金三章 ---------------- */
+
+import { goldenThreePrompt, normalizeGoldenThree } from './ai/prompts/reader';
+
+describe('goldenThreePrompt', () => {
+  it('逐章正文与作者钩子进 prompt，判据聚焦留存', () => {
+    const u = goldenThreePrompt({
+      chapters: [
+        { index: 1, title: '雪夜', content: '第一章正文', chapterHook: '尸袋动了' },
+        { index: 2, title: '盐仓', content: '第二章正文' },
+      ],
+      genre: '古风悬疑',
+    }).user;
+    expect(u).toContain('第一章正文');
+    expect(u).toContain('作者标注章末钩子：尸袋动了');
+    expect(u).toContain('GO');
+    expect(u).toContain('原样摘录');
+    expect(u).toContain('古风悬疑');
+  });
+});
+
+describe('normalizeGoldenThree', () => {
+  const good = {
+    chapters: [
+      { index: 1, title: '甲', chapterId: 'v01c001', verdict: 'go', hookNote: 'h1', grievances: [{ quote: 'q', issue: 'i' }] },
+      { index: 2, title: '乙', chapterId: 'v01c002', verdict: 'REWRITE', hookNote: '', grievances: [] },
+      { index: 3, title: '丙', chapterId: 'v01c003', verdict: 'WEIRD', hookNote: '', grievances: [{ quote: 1, issue: 'x' }] },
+    ],
+    retentionScore: 12, overall: '总评', fixes: ['a', 'b', 'c', 'd'],
+  };
+
+  it('verdict 归一大写、未知值退 REVISE；分数钳 0~10；fixes 截 3', () => {
+    const r = normalizeGoldenThree(good);
+    expect(r!.chapters.map((c) => c.verdict)).toEqual(['GO', 'REWRITE', 'REVISE']);
+    expect(r!.retentionScore).toBe(10);
+    expect(r!.fixes).toHaveLength(3);
+  });
+
+  it('脏 grievance 丢弃；chapters 全脏/缺失 → null', () => {
+    expect(normalizeGoldenThree(good)!.chapters[2].grievances).toHaveLength(0);
+    expect(normalizeGoldenThree({ chapters: [] })).toBeNull();
+    expect(normalizeGoldenThree({ chapters: [null, 'x'] })).toBeNull();
+    expect(normalizeGoldenThree({})).toBeNull();
+  });
+});

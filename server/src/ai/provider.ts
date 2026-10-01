@@ -123,6 +123,20 @@ function yieldMockJson(promptHint: string): string {
   if (promptHint.includes('逐项检查') || promptHint.includes('一致性检查')) {
     return JSON.stringify({ issues: [] });
   }
+  if (promptHint.includes('逐章裁决')) {
+    return JSON.stringify({
+      chapters: [
+        { index: 1, title: '第一章', chapterId: 'v01c001', verdict: 'REVISE', hookNote: '钩子有但偏软，靠环境异常收束',
+          grievances: [{ quote: '更声三长两短', issue: '开篇前 300 字无冲突，靠氛围描写拖住读者' }] },
+        { index: 2, title: '第二章', chapterId: 'v01c002', verdict: 'GO', hookNote: '仓门上锁的收尾够逼着点下一章',
+          grievances: [{ quote: '账目亏空浮出', issue: '金手指存在感弱，验尸翻盘来得太顺' }] },
+        { index: 3, title: '第三章', chapterId: 'v01c003', verdict: 'GO', hookNote: '', grievances: [] },
+      ],
+      retentionScore: 6,
+      overall: '前两章能留人，开篇的慢热是最大流失点。',
+      fixes: ['第一章首屏放进尸体或威胁', '让翻盘多一次受阻再成立', '第二章补一句李慎验尸手法的特殊性'],
+    });
+  }
   if (promptHint.includes('三类目标读者') || promptHint.includes('读者身份')) {
     return JSON.stringify({
       personas: [

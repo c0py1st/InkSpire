@@ -27,7 +27,7 @@ import { loadCacheStats, recordUsage } from '../cache-stats';
 import { l0Check, looksAncientSetting, type L0Finding } from '../../../shared/src/l0';
 import { loadL0Report, saveChapterL0 } from '../l0-report';
 import { verifyIssueQuotes, verifyQuote } from '../quote-verify';
-import { readerReviewPrompt, normalizeReaderReview } from '../ai/prompts/reader';
+import { readerReviewPrompt, normalizeReaderReview, goldenThreePrompt, normalizeGoldenThree } from '../ai/prompts/reader';
 import { buildHealthReport } from '../health-aggregate';
 import { recapPrompt } from '../ai/prompts/recap';
 import { countChars, ensureParagraphIndent } from '../../../shared/src/util';
@@ -1020,6 +1020,52 @@ aiRouter.post('/projects/:slug/review/:chapterId', async (req, res) => {
     // 引证验真：每条 grievance 的 quote 落地到本章正文（与一致性检查同一口径）
     for (const p of report.personas) for (const g of p.grievances) g.verified = verifyQuote(g.quote, content);
     res.json({ report });
+  } catch (err) {
+    res.status(500).json({ error: (err as Error).message });
+  }
+});
+
+/** 黄金三章评审（E4）：开篇当批送审，逐章 GO/REVISE/REWRITE + 综合留存评分，引证逐字验真 */
+aiRouter.post('/projects/:slug/golden-three', async (req, res) => {
+  const { slug } = req.params;
+  try {
+    const cfg = loadConfig();
+    const outline = loadOutline(slug);
+    if (!outline) return res.status(400).json({ error: '本书还没有大纲' });
+    const order = flattenChapterIds(outline);
+    const titleOf = new Map<string, string>();
+    const hookOf = new Map<string, string>();
+    for (const v of outline.volumes) for (const c of v.chapters) {
+      titleOf.set(c.id, c.title);
+      if (c.chapterHook?.trim()) hookOf.set(c.id, c.chapterHook.trim());
+    }
+    // 取有正文的前三章（不足三章就有几章评审几章）
+    const firstChapters: Array<{ index: number; title: string; content: string; chapterHook?: string; id: string }> = [];
+    for (const cid of order) {
+      const content = readChapter(slug, cid).content;
+      if (content.trim()) {
+        firstChapters.push({ index: firstChapters.length + 1, title: titleOf.get(cid) ?? cid, id: cid, content, ...(hookOf.get(cid) ? { chapterHook: hookOf.get(cid) } : {}) });
+        if (firstChapters.length >= 3) break;
+      }
+    }
+    if (firstChapters.length === 0) return res.status(400).json({ error: '还没有任何有正文的章节，无法评审开篇' });
+    const prompt = goldenThreePrompt({
+      chapters: firstChapters.map((c) => ({ index: c.index, title: c.title, content: c.content, ...(c.chapterHook ? { chapterHook: c.chapterHook } : {}) })),
+      genre: outline.genre,
+    });
+    const raw = await chatOnce(cfg, creativeProfile(cfg), [
+      { role: 'system', content: prompt.system },
+      { role: 'user', content: prompt.user },
+    ], { kind: 'json', temperature: 0.4, maxTokens: 4000,
+      onMeta: (m) => { if (m.usage) recordUsage(slug, { source: 'golden', usage: m.usage }); } });
+    const report = normalizeGoldenThree(extractJson<unknown>(raw));
+    if (!report) return res.status(502).json({ error: '评审返回结构不可用，请重试' });
+    // 每章引证按各自正文验真（index 1→firstChapters[0]…）
+    for (const ch of report.chapters) {
+      const src = firstChapters[ch.index - 1];
+      for (const g of ch.grievances) g.verified = src ? verifyQuote(g.quote, src.content) : false;
+    }
+    res.json({ report, reviewed: firstChapters.map((c) => ({ id: c.id, title: c.title })) });
   } catch (err) {
     res.status(500).json({ error: (err as Error).message });
   }

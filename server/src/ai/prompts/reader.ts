@@ -1,4 +1,4 @@
-import type { ReaderReview } from '../../../../shared/src/types';
+import type { GoldenChapter, GoldenThreeReview, ReaderReview } from '../../../../shared/src/types';
 import { ASSISTANT_BASE, JSON_ONLY } from './common';
 
 /**
@@ -88,5 +88,74 @@ export function normalizeReaderReview(raw: unknown): ReaderReview | null {
     personas: personasOut,
     verdict: typeof o.verdict === 'string' ? o.verdict.slice(0, 200) : '',
     topFixes: Array.isArray(o.topFixes) ? o.topFixes.filter((s): s is string => typeof s === 'string').slice(0, 3).map((s) => s.slice(0, 200)) : [],
+  };
+}
+
+/* ---------------- E4 黄金三章评审 ---------------- */
+
+/**
+ * 番茄/起点式"开篇定生死"：把前三章当一批送审，逐章 GO/REVISE/REWRITE，
+ * 并给一个综合留存评分。判据是"读完第 3 章还在不在书里"，不是文笔。
+ */
+export function goldenThreePrompt(args: {
+  chapters: Array<{ index: number; title: string; content: string; chapterHook?: string }>;
+  genre: string;
+}): { system: string; user: string } {
+  const body = args.chapters
+    .map((c) => `\n【第${c.index}章《${c.title}》】${c.chapterHook ? `（作者标注章末钩子：${c.chapterHook}）` : ''}\n${c.content.slice(0, 8000)}`)
+    .join('\n');
+  return {
+    system: ASSISTANT_BASE,
+    user: `你是免费网文平台的资深编辑，替"给了前三章定生死"的读者判断这部 ${args.genre} 的开篇能不能留住人。
+逐章裁决 + 综合诊断，判据只有"读者会不会继续"：钩子硬不硬、冲突/金手指进得早不早、有没有劝退点（信息倾倒、主角被动、逻辑硬伤）。别评文笔好坏。
+
+${body}
+
+纪律：
+- 每章 verdict：GO（能留人）/ REVISE（有硬伤但可改）/ REWRITE（开篇失败，建议重写）。
+- 每章 grievances 0~3 条，quote 必须从对应章正文【原样摘录】（服务端逐字验真），issue 一句话。
+- hookNote：一句话评该章章末钩子的强度。
+- retentionScore 0~10：三章合力把新读者留住的把握；overall 一句话开篇诊断；fixes≤3 条按影响排序。
+
+输出 JSON（${JSON_ONLY}）：
+{ "chapters": [ { "index": 1, "title": "…", "chapterId": "…", "verdict": "GO|REVISE|REWRITE", "hookNote": "…", "grievances": [ { "quote": "正文原句", "issue": "…" } ] } ],
+  "retentionScore": 6, "overall": "…", "fixes": ["…"] }`,
+  };
+}
+
+const VERDICTS = new Set(['GO', 'REVISE', 'REWRITE']);
+
+export function normalizeGoldenThree(raw: unknown): GoldenThreeReview | null {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+  const o = raw as Record<string, unknown>;
+  if (!Array.isArray(o.chapters)) return null;
+  const chapters: GoldenChapter[] = o.chapters.slice(0, 3).flatMap((c) => {
+    if (!c || typeof c !== 'object' || Array.isArray(c)) return [];
+    const x = c as Record<string, unknown>;
+    const verdict = typeof x.verdict === 'string' && VERDICTS.has(x.verdict.toUpperCase()) ? x.verdict.toUpperCase() : 'REVISE';
+    const grievances = Array.isArray(x.grievances)
+      ? x.grievances.slice(0, 3).flatMap((g) => {
+          if (!g || typeof g !== 'object' || Array.isArray(g)) return [];
+          const gg = g as Record<string, unknown>;
+          if (typeof gg.quote !== 'string' || typeof gg.issue !== 'string') return [];
+          return [{ quote: gg.quote.slice(0, 200), issue: gg.issue.slice(0, 200) }];
+        })
+      : [];
+    return [{
+      index: typeof x.index === 'number' ? x.index : 0,
+      title: typeof x.title === 'string' ? x.title.slice(0, 60) : '',
+      chapterId: typeof x.chapterId === 'string' ? x.chapterId.slice(0, 24) : '',
+      verdict: verdict as GoldenChapter['verdict'],
+      hookNote: typeof x.hookNote === 'string' ? x.hookNote.slice(0, 160) : '',
+      grievances,
+    }];
+  });
+  if (chapters.length === 0) return null;
+  const rs = typeof o.retentionScore === 'number' && Number.isFinite(o.retentionScore) ? Math.max(0, Math.min(10, Math.round(o.retentionScore))) : 0;
+  return {
+    chapters,
+    retentionScore: rs,
+    overall: typeof o.overall === 'string' ? o.overall.slice(0, 200) : '',
+    fixes: Array.isArray(o.fixes) ? o.fixes.filter((s): s is string => typeof s === 'string').slice(0, 3).map((s) => s.slice(0, 200)) : [],
   };
 }

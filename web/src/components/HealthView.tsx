@@ -1,4 +1,6 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
+import type { GoldenThreeReview } from '../../../shared/src/types';
+import { api } from '../api/client';
 import { useStore } from '../state/store';
 import { Btn } from './primitives';
 
@@ -6,15 +8,31 @@ import { Btn } from './primitives';
  * 体检面板：全书进度 / 伏笔账 / 人物出场 / L0 预检 / 模型用量。
  * 数据全部来自 GET /health（纯统计 + .index 缓存，零模型调用），
  * 「重跑 L0」是唯一主动动作（纯代码，不花钱）。
+ * 例外：网文模式下的「黄金三章评审」会主动调一次模型（按钮明示）。
  */
 export function HealthView() {
   const slug = useStore((s) => s.slug);
   const webnovelMode = useStore((s) => !!s.bundle?.meta.webnovelMode);
   const openChapter = useStore((s) => s.openChapter);
+  const toast = useStore((s) => s.toast);
   const rep = useStore((s) => s.health);
   const busy = useStore((s) => s.healthLoading);
   const loadHealth = useStore((s) => s.loadHealth);
   const rerunHealthL0 = useStore((s) => s.rerunHealthL0);
+  const [golden, setGolden] = useState<'idle' | 'loading' | GoldenThreeReview | null>('idle');
+  const goldenReport = golden === 'loading' || golden === 'idle' ? null : golden;
+
+  async function runGolden() {
+    if (!slug) return;
+    setGolden('loading');
+    try {
+      const r = await api.goldenThree(slug);
+      setGolden(r.report);
+    } catch (err) {
+      setGolden(null);
+      toast((err as Error).message, 'error');
+    }
+  }
 
   // 进入即取数；loadHealth 是 store action（zustand set 不被 React 钩子规则追踪），effect 里调用合规
   useEffect(() => { void loadHealth(); }, [loadHealth]);
@@ -93,6 +111,47 @@ export function HealthView() {
                       <span key={m.chapterId} className="tl-chip" style={{ cursor: 'pointer', marginRight: 5 }} onClick={() => void openChapter(m.chapterId)}>{m.title}</span>
                     ))}
                   </div>
+                )}
+              </Section>
+            )}
+
+            {/* 黄金三章评审（网文模式；这是面板里唯一会调模型的动作，按钮明示） */}
+            {webnovelMode && (
+              <Section
+                title="开篇 · 黄金三章评审"
+                right={<Btn small ghost onClick={() => void runGolden()} disabled={golden === 'loading'} title="把有正文的前三章当一批送审（会调用一次创作模型）">{golden === 'loading' ? '评审中…' : goldenReport ? '再审一次' : '评审前三章'}</Btn>}
+              >
+                <div className="pane-sub" style={{ marginBottom: 8, fontSize: 11.5 }}>番茄/起点式判据：读者只给前三章机会。此评审会调用一次模型（非零成本）。</div>
+                {golden === 'loading' && <><div className="progress-line" /><div className="pane-sub" style={{ fontSize: 12 }}>编辑正在读你的前三章…</div></>}
+                {goldenReport && (
+                  <>
+                    <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 8 }}>
+                      <span>留存把握</span>
+                      <span className={`rv-score ${goldenReport.retentionScore >= 7 ? 'good' : goldenReport.retentionScore >= 5 ? 'mid' : 'bad'}`}>{goldenReport.retentionScore}/10</span>
+                      {goldenReport.overall && <span className="pane-sub" style={{ fontSize: 12 }}>{goldenReport.overall}</span>}
+                    </div>
+                    {goldenReport.chapters.map((c) => (
+                      <div key={c.index} className="vol-block" style={{ padding: '9px 12px', marginBottom: 8 }}>
+                        <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
+                          <button className="tl-ch" onClick={() => c.chapterId && void openChapter(c.chapterId)}>第{c.index}章《{c.title}》</button>
+                          <span className={`gv gv-${c.verdict.toLowerCase()}`}>{c.verdict === 'GO' ? '留得住' : c.verdict === 'REVISE' ? '可改' : '建议重写'}</span>
+                          {c.hookNote && <span className="pane-sub" style={{ fontSize: 11.5 }}>钩子：{c.hookNote}</span>}
+                        </div>
+                        {c.grievances.map((g, k) => (
+                          <div key={k} style={{ fontSize: 12.5, marginTop: 4 }}>
+                            <span style={{ color: 'var(--danger)' }}>－ </span>{g.issue}
+                            {g.quote && <div className={`quote${g.verified === false ? ' unver' : ''}`}>「{g.quote}」{g.verified === false ? '（正文中无此句）' : ''}</div>}
+                          </div>
+                        ))}
+                      </div>
+                    ))}
+                    {goldenReport.fixes.length > 0 && (
+                      <div className="rv-fixes" style={{ marginTop: 6 }}>
+                        <div style={{ fontSize: 12, color: 'var(--text-faint)', marginBottom: 4 }}>开篇修改优先级</div>
+                        {goldenReport.fixes.map((f, i) => <div key={i} className="rv-fix">{i + 1}. {f}</div>)}
+                      </div>
+                    )}
+                  </>
                 )}
               </Section>
             )}
