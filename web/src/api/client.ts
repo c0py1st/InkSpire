@@ -115,6 +115,7 @@ export const api = {
   getBackup: (slug: string, id: string, stamp: string) =>
     get<ChapterFile>(`/api/projects/${slug}/chapter/${id}/backups/${encodeURIComponent(stamp)}`),
   saveOutline: (slug: string, outline: Outline) => put<{ ok: true }>(`/api/projects/${slug}/outline`, outline),
+  setMeta: (slug: string, patch: { webnovelMode?: boolean }) => put<{ ok: true; webnovelMode: boolean }>(`/api/projects/${slug}/meta`, patch),
   saveForeshadows: (slug: string, items: Foreshadow[]) =>
     put<{ ok: true; count: number }>(`/api/projects/${slug}/foreshadows`, items),
   saveCharacters: (slug: string, chars: CharacterCard[]) => put<{ ok: true }>(`/api/projects/${slug}/characters`, chars),

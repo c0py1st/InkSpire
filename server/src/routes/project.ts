@@ -4,8 +4,8 @@ import {
 } from '../../../shared/src/types';
 import { countChars } from '../../../shared/src/util';
 import {
-  listChapterBackups, listChapters, loadBundle, loadChat, loadEvents, loadForeshadows, loadOutline, loadSummaries, readChapter, readChapterBackup,
-  saveCharacters, saveChapterBody, saveChat, saveEvents, saveOutline, saveForeshadows, saveSummaries, saveSuggestions, saveWorldview,
+  getMeta, listChapterBackups, listChapters, loadBundle, loadChat, loadEvents, loadForeshadows, loadOutline, loadSummaries, readChapter, readChapterBackup,
+  saveCharacters, saveChapterBody, saveChat, saveEvents, saveMeta, saveOutline, saveForeshadows, saveSummaries, saveSuggestions, saveWorldview,
 } from '../fs-store';
 import { searchChapters } from '../chapter-index';
 import { loadCacheStats, resetCacheStats } from '../cache-stats';
@@ -13,8 +13,7 @@ import { loadCacheStats, resetCacheStats } from '../cache-stats';
 export const projectRouter = Router();
 
 /** 打开作品：一次性全量下发 */
-projectRouter.get('/:slug/bundle', (req, res) => {
-  try {
+projectRouter.get('/:slug/bundle', (req, res) => {  try {
     const bundle = loadBundle(req.params.slug);
     const chapters = listChapters(req.params.slug);
     const wc: Record<string, number> = {};
@@ -27,6 +26,18 @@ projectRouter.get('/:slug/bundle', (req, res) => {
     res.json({ ...bundle, wordCounts: wc, chapterTitles: Object.fromEntries(chapters.map((c) => [c.id, c.title])) });
   } catch (err) {
     res.status(404).json({ error: (err as Error).message });
+  }
+});
+
+/** 作品级开关：白名单只收 webnovelMode（网文模式），其余 meta 字段不可经此改 */
+projectRouter.put('/:slug/meta', (req, res) => {
+  try {
+    const meta = getMeta(req.params.slug);
+    if (typeof req.body?.webnovelMode === 'boolean') meta.webnovelMode = req.body.webnovelMode;
+    saveMeta(req.params.slug, meta);
+    res.json({ ok: true, webnovelMode: !!meta.webnovelMode });
+  } catch (err) {
+    res.status(400).json({ error: (err as Error).message });
   }
 });
 

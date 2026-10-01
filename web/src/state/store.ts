@@ -140,6 +140,7 @@ interface Store {
   acceptSuggestion: (id: string) => Promise<void>;
   dismissSuggestion: (id: string) => Promise<void>;
   markSuggestionsSeen: () => void;
+  toggleWebnovelMode: (on: boolean) => Promise<void>;
 }
 
 let saveTimer: ReturnType<typeof setTimeout> | null = null;
@@ -697,6 +698,18 @@ export const useStore = create<Store>((set, get) => ({
         bundle: { ...bundle, suggestions: bundle.suggestions.filter((s) => s.id !== id) },
         suggestionsSeen: bundle.suggestions.length - 1,
       });
+    } catch (err) {
+      get().toast((err as Error).message, 'error');
+    }
+  },
+
+  async toggleWebnovelMode(on: boolean) {
+    const { slug, bundle } = get();
+    if (!slug || !bundle) return;
+    try {
+      const r = await api.setMeta(slug, { webnovelMode: on });
+      set({ bundle: { ...bundle, meta: { ...bundle.meta, webnovelMode: r.webnovelMode } } });
+      get().toast(r.webnovelMode ? '已开启网文模式：大纲页出现爽点/钩子字段' : '已关闭网文模式', 'ok');
     } catch (err) {
       get().toast((err as Error).message, 'error');
     }

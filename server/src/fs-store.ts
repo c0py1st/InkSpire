@@ -200,6 +200,11 @@ export function touchMeta(slug: string): void {
   writeJson(jfile(slug, 'meta.json'), meta);
 }
 
+/** 覆盖写 meta（调用方负责只改允许的字段）；顺带刷新 updatedAt */
+export function saveMeta(slug: string, meta: ProjectMeta): void {
+  writeJson(jfile(slug, 'meta.json'), { ...meta, updatedAt: new Date().toISOString() });
+}
+
 /* ---------------- 读取 ---------------- */
 
 export function loadOutline(slug: string): Outline | null {

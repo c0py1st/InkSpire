@@ -140,6 +140,20 @@ export function buildChapterContext(args: {
 
   const prevTail = args.prevChapterContent ? args.prevChapterContent.replace(/\s+$/, '').slice(-PREV_TAIL_CHARS) : '';
 
+  // 章末钩子去重素材：目标章之前最近 5 章里声明过的 chapterHook（没填则整个为空，零影响）
+  const order = flattenChapterIds(outline);
+  const at = order.indexOf(chapterId);
+  const beatOf = new Map<string, ChapterBeat>();
+  for (const v of outline.volumes) for (const c of v.chapters) beatOf.set(c.id, c);
+  const recentHooks: Array<{ chapter: string; hook: string }> = [];
+  if (at > 0) {
+    for (const cid of order.slice(Math.max(0, at - 5), at)) {
+      const b = beatOf.get(cid);
+      const h = b?.chapterHook?.trim();
+      if (b && h) recentHooks.push({ chapter: b.title, hook: h });
+    }
+  }
+
   return {
     outline,
     chapter: loc.chapter,
@@ -152,6 +166,7 @@ export function buildChapterContext(args: {
     foreshadow: foreshadowText(outline, args.foreshadows ?? [], chapterId),
     cast,
     mentionOnly: mentionOnlyAll,
+    recentHooks,
   };
 }
 

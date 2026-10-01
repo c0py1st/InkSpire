@@ -19,10 +19,11 @@ function recapStateOf(vol: Volume, summaries: Record<string, string>, recap?: { 
 }
 
 export function OutlineView() {
-  const { bundle, persistOutline, updateOutlineLocal, toast, openChapter, setView, reloadBundle } =
+  const { bundle, persistOutline, updateOutlineLocal, toast, openChapter, setView, reloadBundle, toggleWebnovelMode } =
     useStore(useShallow((s) => ({
       bundle: s.bundle, persistOutline: s.persistOutline, updateOutlineLocal: s.updateOutlineLocal,
       toast: s.toast, openChapter: s.openChapter, setView: s.setView, reloadBundle: s.reloadBundle,
+      toggleWebnovelMode: s.toggleWebnovelMode,
     })));
   const [refining, setRefining] = useState<number | null>(null);
   const [recapping, setRecapping] = useState<string | null>(null);
@@ -141,6 +142,13 @@ export function OutlineView() {
       <div className="pane-pad outline-head">
         <h2 className="pane-title">大纲 · agent 的工作契约</h2>
         <div className="pane-sub">这里改动的每一个字，都会成为后续章节生成的硬约束。字段失焦即保存。</div>
+
+        {/* 网文模式：兼容路线的总开关——关掉不删已填字段，只是不再显示与注入 */}
+        <label className="wn-toggle" title="开启后每章可填「爽点/章末钩子」，生成时作为硬约束注入并做跨章钩子去重；体检面板追加节奏红线告警。关闭只隐藏编辑入口，已填字段仍随大纲生效">
+          <input type="checkbox" checked={!!bundle?.meta.webnovelMode} onChange={(e) => void toggleWebnovelMode(e.target.checked)} />
+          网文连载模式
+          <span className="wn-hint">爽点 / 章末钩子 / 钩子去重 / 节奏红线</span>
+        </label>
 
         <Field label="一句话内核"><textarea style={{ minHeight: 48 }} value={outline.premise} onChange={(e) => editOutline({ premise: e.target.value })} onBlur={commitOutline} /></Field>
         <div style={{ display: 'flex', gap: 14 }}>
@@ -265,6 +273,30 @@ export function OutlineView() {
                     })}
                   />
                 </div>
+                {(bundle?.meta.webnovelMode || c.payoffPoint || c.chapterHook) && (
+                  <div className="row2 wn-row">
+                    <input
+                      type="text" placeholder="本章爽点：读者情绪在本章兑现什么（可空）"
+                      value={c.payoffPoint ?? ''}
+                      onChange={(e) => mutateVolumes((vs) => { vs[vi].chapters[ci] = { ...c, payoffPoint: e.target.value }; return vs; }, false)}
+                      onBlur={(e) => mutateVolumes((vs) => {
+                        const { payoffPoint: _drop, ...rest } = vs[vi].chapters[ci];
+                        vs[vi].chapters[ci] = e.target.value.trim() ? { ...rest, payoffPoint: e.target.value } : { ...rest };
+                        return vs;
+                      })}
+                    />
+                    <input
+                      type="text" placeholder="章末钩子：结尾落到的悬念（相邻章忌同套路）"
+                      value={c.chapterHook ?? ''}
+                      onChange={(e) => mutateVolumes((vs) => { vs[vi].chapters[ci] = { ...c, chapterHook: e.target.value }; return vs; }, false)}
+                      onBlur={(e) => mutateVolumes((vs) => {
+                        const { chapterHook: _drop, ...rest } = vs[vi].chapters[ci];
+                        vs[vi].chapters[ci] = e.target.value.trim() ? { ...rest, chapterHook: e.target.value } : { ...rest };
+                        return vs;
+                      })}
+                    />
+                  </div>
+                )}
               </div>
             ))}
             {expanded && (

@@ -13,6 +13,7 @@ export interface ChapterContext {
   foreshadow?: string;           // 伏笔备忘（已埋未收 + 本章应收）
   cast: CharacterCard[];         // 出场人物完整卡片
   mentionOnly: CharacterCard[];  // 其他主要人物一句话版
+  recentHooks?: Array<{ chapter: string; hook: string }>;  // 前文已用章末钩子（去重用；网文模式才有值）
 }
 
 /** 逐章正文的生成提示词。这是"严格按大纲"的核心环节。 */
@@ -47,6 +48,14 @@ ${[
   ctx.prevTail ? `【上一章结尾原文】（承接其场景、语气与未收的钩子）\n…${ctx.prevTail}` : '',
   `【本章硬约束】第 ${ctx.chapter.title} 章（POV：${ctx.chapter.pov ?? '自由'}）\n${ctx.chapter.beat}`,
   nextBeats ? `【后续章节走向（写作时可埋钩子，但不要提前展开）】\n${nextBeats}` : '',
+  // 网文模式专属（字段缺省即不出现，非网文逐字节不变）：爽点兑现 + 章末钩子去重
+  ctx.chapter.payoffPoint ? `【本章爽点（须在本章兑现）】${ctx.chapter.payoffPoint}` : '',
+  ctx.chapter.chapterHook
+    ? `【本章章末钩子（结尾须落到这个悬念上）】${ctx.chapter.chapterHook}`
+    : '',
+  ctx.recentHooks && ctx.recentHooks.length
+    ? `【钩子去重】前文已用过的章末钩子：${ctx.recentHooks.map((h) => `《${h.chapter}》${h.hook}`).join('；')}。本章结尾不要复读这些套路（同型悬念、同句式的"突然听到巨响/发现熟悉身影"等），要换新触发方式。`
+    : '',
 ]
   .filter(Boolean)
   .join('\n')}

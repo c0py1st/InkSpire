@@ -13,6 +13,9 @@ export interface ChapterBeat {
   characters?: string[]; // 出场人物名
   status: ChapterStatus;
   wordCount?: number;
+  /** 网文结构字段（可选，仅 webnovelMode 下编辑与注入；缺省 = 逐字节旧行为） */
+  payoffPoint?: string;  // 本章爽点：读者情绪的兑现点
+  chapterHook?: string;  // 章末钩子：驱动追读的悬念落点（同类钩子会做跨章去重）
 }
 
 export interface Volume {
@@ -106,6 +109,7 @@ export interface ProjectMeta {
   createdAt: string;
   updatedAt: string;
   wordsPerChapter?: number;   // 每章目标字数（向导里设置，用于编辑器进度提示）
+  webnovelMode?: boolean;     // 网文模式：开启大纲页的爽点/钩子字段与节奏红线告警（默认关，老书零影响）
 }
 
 export interface Suggestion {

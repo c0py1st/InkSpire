@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { CharacterCard, Foreshadow, Outline, Suggestion, VolumeRecap } from '../../shared/src/types';
 import { applyOutlineSuggestion, applyStateSuggestion, recapFingerprint, stateAtChapter } from '../../shared/src/types';
 import { buildChapterContext, buildSummariesText, flattenChapterIds, foreshadowText, locateChapter, nextChapterIds, openForeshadowListText } from './ai/memory';
+import { prosePrompt } from './ai/prompts/prose';
 
 function fs_(over: Partial<Foreshadow>): Foreshadow {
   return {
@@ -408,5 +409,56 @@ describe('applyOutlineSuggestion', () => {
     expect(applyOutlineSuggestion(t1, { ...base, sourceChapterId: undefined })).toBe(false);
     expect(applyOutlineSuggestion(t1, { ...base, sourceChapterId: 'v99c999' })).toBe(false);
     expect(t1.volumes[0].chapters[1].beat).toBe('b');
+  });
+});
+
+/* ---------------- E1 网文结构字段：注入与零漂移 ---------------- */
+
+describe('网文模式 E1 prosePrompt 注入', () => {
+  const o = outline();
+  const args = { characters: [] as CharacterCard[], worldview: '', summaries: {} as Record<string, string> };
+
+  it('字段缺省时 prompt 不含任何网文标记（老书逐字节不变）', () => {
+    const ctx = buildChapterContext({ outline: o, chapterId: 'v01c002', ...args });
+    const p = prosePrompt(ctx);
+    expect(p.user).not.toContain('爽点');
+    expect(p.user).not.toContain('章末钩子');
+    expect(p.user).not.toContain('钩子去重');
+  });
+
+  it('本章填了爽点/钩子 → 两条硬约束块出现且逐字', () => {
+    const oo = structuredClone(o);
+    const ch = oo.volumes[0].chapters[1];
+    ch.payoffPoint = '当众打脸质疑者';
+    ch.chapterHook = '勘合上多了一枚陌生火漆';
+    const ctx = buildChapterContext({ outline: oo, chapterId: 'v01c002', ...args });
+    const p = prosePrompt(ctx);
+    expect(p.user).toContain('【本章爽点（须在本章兑现）】当众打脸质疑者');
+    expect(p.user).toContain('【本章章末钩子（结尾须落到这个悬念上）】勘合上多了一枚陌生火漆');
+  });
+
+  it('前章已用钩子 → 去重提示列出；同章及之后的钩子不算', () => {
+    const oo = structuredClone(o);
+    oo.volumes[0].chapters[0].chapterHook = '尸体突然坐起';
+    oo.volumes[0].chapters[2].chapterHook = '未来章的钩子'; // 目标章之后，不得泄漏
+    const p = prosePrompt(buildChapterContext({ outline: oo, chapterId: 'v01c002', ...args }));
+    expect(p.user).toContain('【钩子去重】');
+    expect(p.user).toContain('《v01-第1章》尸体突然坐起');
+    expect(p.user).not.toContain('未来章的钩子');
+  });
+
+  it('钩子去重只看最近 5 章（窗外旧钩子不列、窗内钩子必列）', () => {
+    const oo: Outline = {
+      premise: 'p', genre: 'g', coreConflict: 'c', endingVision: 'e', styleGuide: 's',
+      volumes: [{ id: 'v09', title: '卷九', summary: '', chapters: Array.from({ length: 9 }, (_, i) => ({
+        id: `v09c${String(i + 1).padStart(3, '0')}`, title: `章${i + 1}`, beat: 'b', status: 'todo' as const,
+      })) }],
+    };
+    oo.volumes[0].chapters[0].chapterHook = '太久远的钩子';   // v09c001：距目标 8 章，窗户外
+    oo.volumes[0].chapters[7].chapterHook = '窗内近章的钩子'; // v09c008：目标前一章，窗内
+    const args9 = { characters: [] as CharacterCard[], worldview: '', summaries: {} as Record<string, string> };
+    const p = prosePrompt(buildChapterContext({ outline: oo, chapterId: 'v09c009', ...args9 }));
+    expect(p.user).not.toContain('太久远的钩子');
+    expect(p.user).toContain('窗内近章的钩子');
   });
 });

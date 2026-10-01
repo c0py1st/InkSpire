@@ -124,8 +124,8 @@ aiRouter.post('/wizard/volumes', (req, res) => {
 });
 
 aiRouter.post('/wizard/beats', (req, res) => {
-  const { kernel, volumes, volIndex, chapterCount } = req.body as {
-    kernel: Kernel; volumes: VolumeBrief[]; volIndex: number; chapterCount: number;
+  const { kernel, volumes, volIndex, chapterCount, webnovel } = req.body as {
+    kernel: Kernel; volumes: VolumeBrief[]; volIndex: number; chapterCount: number; webnovel?: boolean;
   };
   const cfg = loadConfig();
   const profile = requireCreative(cfg, res);
@@ -134,13 +134,13 @@ aiRouter.post('/wizard/beats', (req, res) => {
   if (!vol) return res.status(400).json({ error: '卷不存在' });
   const neighbors = [volumes[volIndex - 1], volumes[volIndex + 1]].filter(Boolean)
     .map((v) => ({ title: v.title, summary: v.summary }));
-  const prompt = beatsPrompt(kernel, vol.title, vol.summary, chapterCount, neighbors);
+  const prompt = beatsPrompt(kernel, vol.title, vol.summary, chapterCount, neighbors, { webnovel: !!webnovel });
   streamTask(req, res, async (sse, signal) => {
     const full = await streamToTask(sse, signal, profile, cfg, [
       { role: 'system', content: prompt.system },
       { role: 'user', content: prompt.user },
     ], 'json', 8192);
-    sse.send({ type: 'final', chapters: extractJson<{ chapters: Array<{ title: string; beat: string; pov?: string; characters?: string[] }> }>(full).chapters });
+    sse.send({ type: 'final', chapters: extractJson<{ chapters: Array<{ title: string; beat: string; pov?: string; characters?: string[]; payoffPoint?: string; chapterHook?: string }> }>(full).chapters });
   });
 });
 
@@ -1012,13 +1012,14 @@ aiRouter.post('/projects/:slug/refine-volume/:volIndex', async (req, res) => {
     };
     const neighbors = [outline.volumes[vi - 1], outline.volumes[vi + 1]].filter(Boolean)
       .map((v) => ({ title: v.title, summary: v.summary }));
-    const prompt = beatsPrompt(kernel, vol.title, vol.summary, chapterCount, neighbors);
+    const webnovel = !!getMeta(slug).webnovelMode;
+    const prompt = beatsPrompt(kernel, vol.title, vol.summary, chapterCount, neighbors, { webnovel });
     const raw = await chatOnce(cfg, creativeProfile(cfg), [
       { role: 'system', content: prompt.system },
       { role: 'user', content: prompt.user },
     ], { kind: 'json', maxTokens: 8192,
       onMeta: (m) => { if (m.usage) recordUsage(slug, { source: 'beats', usage: m.usage }); } });
-    const parsed = extractJson<{ chapters: Array<{ title: string; beat: string; pov?: string; characters?: string[] }> }>(raw);
+    const parsed = extractJson<{ chapters: Array<{ title: string; beat: string; pov?: string; characters?: string[]; payoffPoint?: string; chapterHook?: string }> }>(raw);
     const keepIds = vol.chapters.map((ch) => ch.id).slice(0, parsed.chapters.length);
     const { chapterId: mkId } = await import('../../../shared/src/util');
     vol.chapters = parsed.chapters.map((c, i) => {
@@ -1030,6 +1031,8 @@ aiRouter.post('/projects/:slug/refine-volume/:volIndex', async (req, res) => {
         pov: c.pov,
         characters: c.characters,
         status: keepStatus.get(id) ?? 'todo',
+        ...(webnovel && c.payoffPoint?.trim() ? { payoffPoint: c.payoffPoint.trim() } : {}),
+        ...(webnovel && c.chapterHook?.trim() ? { chapterHook: c.chapterHook.trim() } : {}),
       } satisfies ChapterBeat;
     });
     saveOutline(slug, outline);

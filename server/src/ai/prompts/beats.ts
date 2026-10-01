@@ -8,6 +8,7 @@ export function beatsPrompt(
   volumeSummary: string,
   chapterCount: number,
   neighboringVolumes: Array<{ title: string; summary: string }>,
+  opts?: { webnovel?: boolean },
 ): { system: string; user: string } {
   const neighbor = neighboringVolumes.length
     ? '\n相邻卷概要（用于衔接，不得越界展开）：\n' + neighboringVolumes.map((v) => `- ${v.title}：${v.summary}`).join('\n')
@@ -30,8 +31,8 @@ export function beatsPrompt(
 2. beat 之间必须因果衔接，整卷收束到卷摘要。
 3. pov 给出本章视角人物名；characters 列出本章出场人物名（2~4 个）。
 4. 章节标题 2~8 字，具体、有画面，不用"第X章"前缀。
-
+${opts?.webnovel ? '5. 网文连载节奏：每章另给 payoffPoint（本章爽点——读者攒了多章的情绪在本章兑现什么）与 chapterHook（章末钩子一句话）；相邻章的钩子类型必须轮换（危机降临/真相翻转/新敌现身/两难抉择…），不许连续同套路。\n' : ''}
 输出 JSON（${JSON_ONLY}）：
-{ "chapters": [ { "title": "章名", "beat": "...", "pov": "...", "characters": ["..."] } ] }`,
+{ "chapters": [ { "title": "章名", "beat": "...", "pov": "...", "characters": ["..."]${opts?.webnovel ? ', "payoffPoint": "本章爽点一句话", "chapterHook": "章末钩子一句话"' : ''} ] }`,
   };
 }
