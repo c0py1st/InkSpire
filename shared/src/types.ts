@@ -386,6 +386,27 @@ export interface WebnovelPacing {
   missingHook: Array<{ chapterId: string; title: string }>;  // 缺钩子的章（前 12 个）
 }
 
+/* ---------------- 读者模拟评审（E2） ---------------- */
+
+/** 一条抱怨：quote 必须逐字摘自正文，服务端做引证落地校验 */
+export interface ReviewGrievance {
+  quote: string;
+  issue: string;
+  verified?: 'exact' | 'loose' | false;   // 同 ConsistencyIssue 的引证验真口径
+}
+export interface ReviewPersona {
+  name: string;
+  overall: number;              // 1~10
+  wouldContinue: boolean;       // 愿不愿意接着读下去
+  praise: string;               // 最多一句好话
+  grievances: ReviewGrievance[];
+}
+export interface ReaderReview {
+  personas: ReviewPersona[];
+  verdict: string;              // 一句话总评
+  topFixes: string[];           // ≤3 条按影响排序的可执行修改
+}
+
 /* ---------------- 内置预设 ---------------- */
 
 export const PROVIDER_PRESETS = [

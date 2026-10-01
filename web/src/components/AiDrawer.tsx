@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useShallow } from 'zustand/react/shallow';
-import type { ChatMessageRecord, ChatProposalRecord, ConsistencyIssue, ProposalKind } from '../../../shared/src/types';
+import type { ChatMessageRecord, ChatProposalRecord, ConsistencyIssue, ProposalKind, ReaderReview } from '../../../shared/src/types';
 import { PROPOSAL_LABELS } from '../../../shared/src/types';
 import { api } from '../api/client';
 import { useStore } from '../state/store';
@@ -55,6 +55,9 @@ export function AiDrawer() {
   const [proposals, setProposals] = useState<Proposal[]>([]);
   const [issues, setIssues] = useState<'idle' | 'loading' | Issue[] | null>('idle');
   const [issuesOpen, setIssuesOpen] = useState(false);
+  const [review, setReview] = useState<'idle' | 'loading' | ReaderReview | null>('idle');
+  const [reviewOpen, setReviewOpen] = useState(false);
+  const [reviewChapter, setReviewChapter] = useState('');
 
   const bodyRef = useRef<HTMLDivElement>(null);
 
@@ -63,6 +66,7 @@ export function AiDrawer() {
     setMessages([]);
     setProposals([]);
     setIssues('idle');
+    setReview('idle');
     chatHydratedRef.current = null;
     if (!slug) return;
     let alive = true;
@@ -282,6 +286,22 @@ export function AiDrawer() {
     }
   }
 
+  /* ---------- 读者模拟评审 ---------- */
+  async function runReview() {
+    if (!slug || !chapter) return;
+    setReview('loading');
+    setReviewOpen(true);
+    try {
+      const res = await api.review(slug, chapter.id);
+      setReview(res.report);
+      setReviewChapter(chapter.title);
+    } catch (err) {
+      setReview(null);
+      setReviewOpen(false);
+      toast((err as Error).message, 'error');
+    }
+  }
+
   if (!drawerOpen) return null;
 
   const sugg = bundle?.suggestions ?? [];
@@ -294,6 +314,7 @@ export function AiDrawer() {
           批注
           <span className="sub">{chapter ? `《${chapter.title}》` : '全书上下文'}</span>
         <div style={{ flex: 1 }} />
+        <Btn small ghost onClick={runReview} disabled={!chapter} title="三类目标读者给本章的阅读体验打分（抱怨带原文引证并验真）">读者评审</Btn>
         <Btn small ghost onClick={checkConsistency} disabled={!chapter} title="检查本章与设定/前情的矛盾">一致性检查</Btn>
       </div>
       <div className="drawer-tabs">
@@ -497,6 +518,67 @@ export function AiDrawer() {
             <span style={{ fontSize: 11.5, color: 'var(--text-faint)' }}>检查只报告问题，不会改动正文；改完可再点一次复查。</span>
             <div className="spacer" />
             <Btn small onClick={() => void checkConsistency()} disabled={issues === 'loading'}>重新检查</Btn>
+          </div>
+        </BuDialog>
+      )}
+
+      {reviewOpen && (
+        <BuDialog open onClose={() => setReviewOpen(false)} floating ariaTitle={`读者评审 · ${reviewChapter}`}>
+          <div className="m-head">
+            读者评审
+            {reviewChapter && <span className="sub" style={{ fontWeight: 400, marginLeft: 8 }}>《{reviewChapter}》</span>}
+            <div style={{ flex: 1 }} />
+            <Btn ghost small onClick={() => setReviewOpen(false)}>关闭</Btn>
+          </div>
+          <div className="m-body issues-body">
+            {review === 'loading' && (
+              <>
+                <div className="progress-line" />
+                <div style={{ color: 'var(--text-faint)', fontSize: 12.5 }}>三类读者正在翻阅这一章…</div>
+              </>
+            )}
+            {review && review !== 'idle' && review !== 'loading' && (
+              <>
+                {review.personas.map((p, i) => {
+                  const fakeCount = p.grievances.filter((g) => g.verified === false).length;
+                  return (
+                    <div key={i} className="vol-block" style={{ padding: '10px 12px', marginBottom: 10 }}>
+                      <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
+                        <span style={{ fontWeight: 700 }}>{p.name}</span>
+                        <span className={`rv-score ${p.overall >= 7 ? 'good' : p.overall >= 5 ? 'mid' : 'bad'}`}>{p.overall}/10</span>
+                        <span style={{ fontSize: 11.5, color: p.wouldContinue ? 'var(--ok)' : 'var(--danger)' }}>
+                          {p.wouldContinue ? '会追下去' : '想弃'}
+                        </span>
+                      </div>
+                      {p.praise && <div style={{ fontSize: 12.5, color: 'var(--ok)', marginTop: 4 }}>＋ {p.praise}</div>}
+                      {p.grievances.map((g, k) => (
+                        <div key={k} style={{ marginTop: 5, fontSize: 12.5 }}>
+                          <span style={{ color: 'var(--danger)' }}>－ </span>{g.issue}
+                          {g.quote && (
+                            <div className={`quote${g.verified === false ? ' unver' : ''}`}>「{g.quote}」{g.verified === false ? '（正文中找不到此引文）' : ''}</div>
+                          )}
+                        </div>
+                      ))}
+                      {fakeCount > 0 && (
+                        <div style={{ fontSize: 11, color: 'var(--warn)', marginTop: 4 }}>该读者有 {fakeCount} 条抱怨的引证未通过原文校验，权重自负。</div>
+                      )}
+                    </div>
+                  );
+                })}
+                {review.verdict && <div style={{ fontSize: 13, fontWeight: 600, margin: '4px 0 8px' }}>总评：{review.verdict}</div>}
+                {review.topFixes.length > 0 && (
+                  <div className="rv-fixes">
+                    <div style={{ fontSize: 12, color: 'var(--text-faint)', marginBottom: 4 }}>改稿优先级</div>
+                    {review.topFixes.map((f, i) => <div key={i} className="rv-fix">{i + 1}. {f}</div>)}
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+          <div className="m-foot">
+            <span style={{ fontSize: 11.5, color: 'var(--text-faint)' }}>评审模拟读者体验，不改正文；每条抱怨的引文已逐字比对原文。</span>
+            <div className="spacer" />
+            <Btn small onClick={() => void runReview()} disabled={review === 'loading'}>重审本章</Btn>
           </div>
         </BuDialog>
       )}

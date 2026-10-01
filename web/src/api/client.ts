@@ -1,6 +1,6 @@
 /** 与后端的全部交互。SSE 统一走 sse()。 */
 import type {
-  AppConfig, Bundle, ChatMessageRecord, ChapterFile, ChapterStatus, CharacterCard, ConsistencyIssue, Foreshadow, GenChapterResult, HealthReport, Kernel, Outline, ProjectMeta, ProposalRequest, SearchHit, StoryEvent, Suggestion, Volume, VolumeBrief,
+  AppConfig, Bundle, ChatMessageRecord, ChapterFile, ChapterStatus, CharacterCard, ConsistencyIssue, Foreshadow, GenChapterResult, HealthReport, Kernel, Outline, ProjectMeta, ProposalRequest, ReaderReview, SearchHit, StoryEvent, Suggestion, Volume, VolumeBrief,
 } from '../../../shared/src/types';
 
 async function json<T>(res: Response): Promise<T> {
@@ -131,6 +131,10 @@ export const api = {
   consistency: (slug: string, chapterId: string) =>
     post<{ issues: ConsistencyIssue[] }>(
       `/api/projects/${slug}/check-consistency/${chapterId}`, {},
+    ),
+  review: (slug: string, chapterId: string) =>
+    post<{ report: ReaderReview }>(
+      `/api/projects/${slug}/review/${chapterId}`, {},
     ),
   refineVolume: (slug: string, volIndex: number, chapterCount: number) =>
     post<{ ok: true; volume: Volume }>(`/api/projects/${slug}/refine-volume/${volIndex}`, { chapterCount }),

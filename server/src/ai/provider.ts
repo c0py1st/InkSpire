@@ -123,6 +123,20 @@ function yieldMockJson(promptHint: string): string {
   if (promptHint.includes('逐项检查') || promptHint.includes('一致性检查')) {
     return JSON.stringify({ issues: [] });
   }
+  if (promptHint.includes('三类目标读者') || promptHint.includes('读者身份')) {
+    return JSON.stringify({
+      personas: [
+        { name: '读者一', overall: 7, wouldContinue: true, praise: '验尸一段的冷细节立住了主角的专业感。',
+          grievances: [{ quote: '他把勘合收进袖中', issue: '收勘合这个动作来得突然，前文没交代为什么带着它。' }] },
+        { name: '读者二', overall: 6, wouldContinue: true, praise: '对话干净。',
+          grievances: [{ quote: '雪光刺眼', issue: '上一章刚下过雪，这里又「第一次」见到雪光，环境在复读。' }] },
+        { name: '读者三', overall: 5, wouldContinue: false, praise: '',
+          grievances: [{ quote: '他想起师父的话', issue: '插叙出现得没有契机，读到这儿节奏断了。' }] },
+      ],
+      verdict: '骨架能读下去，但三处小断裂累积起来正在消耗信任。',
+      topFixes: ['收勘合前补一笔为何携带', '雪光改写成与上一章不同的质感', '师父插叙改为被眼前事物勾起'],
+    });
+  }
   // 默认：故事内核（"提炼成一份故事内核"是最靠前的步骤）
   return JSON.stringify({
     premise: '【演示】一个身负旧案的小捕快，卷入州府夺印之争，被迫在律法与恩义之间选边站。',

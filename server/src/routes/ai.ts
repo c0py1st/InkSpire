@@ -26,7 +26,8 @@ import { recapFingerprint, stateAtChapter } from '../../../shared/src/types';
 import { loadCacheStats, recordUsage } from '../cache-stats';
 import { l0Check, looksAncientSetting, type L0Finding } from '../../../shared/src/l0';
 import { loadL0Report, saveChapterL0 } from '../l0-report';
-import { verifyIssueQuotes } from '../quote-verify';
+import { verifyIssueQuotes, verifyQuote } from '../quote-verify';
+import { readerReviewPrompt, normalizeReaderReview } from '../ai/prompts/reader';
 import { buildHealthReport } from '../health-aggregate';
 import { recapPrompt } from '../ai/prompts/recap';
 import { countChars, ensureParagraphIndent } from '../../../shared/src/util';
@@ -986,6 +987,39 @@ aiRouter.post('/projects/:slug/check-consistency/:chapterId', async (req, res) =
     ], { kind: 'json', temperature: 0.2, maxTokens: 4000,
       onMeta: (m) => { if (m.usage) recordUsage(slug, { source: 'consistency', chapterId, usage: m.usage }); } });
     res.json({ issues: verifyIssueQuotes(extractJson<{ issues: ConsistencyIssue[] }>(raw).issues ?? [], content) });
+  } catch (err) {
+    res.status(500).json({ error: (err as Error).message });
+  }
+});
+
+/** 读者模拟评审（E2）：三 persona 独立给本章的阅读体验打分，抱怨必须带逐字引证并服务端验真 */
+aiRouter.post('/projects/:slug/review/:chapterId', async (req, res) => {
+  const { slug, chapterId } = req.params;
+  try {
+    const cfg = loadConfig();
+    const outline = loadOutline(slug);
+    if (!outline) return res.status(400).json({ error: '本书还没有大纲' });
+    const loc = locateChapter(outline, chapterId);
+    const content = readChapter(slug, chapterId).content;
+    if (!content.trim()) return res.status(400).json({ error: '本章还没有正文，先写/生成再评审' });
+    const webnovel = !!getMeta(slug).webnovelMode;
+    const prompt = readerReviewPrompt({
+      chapterTitle: loc.chapter.title,
+      content: content.slice(0, 20000),
+      webnovel,
+      ...(loc.chapter.payoffPoint?.trim() ? { payoffPoint: loc.chapter.payoffPoint.trim() } : {}),
+      ...(loc.chapter.chapterHook?.trim() ? { chapterHook: loc.chapter.chapterHook.trim() } : {}),
+    });
+    const raw = await chatOnce(cfg, creativeProfile(cfg), [
+      { role: 'system', content: prompt.system },
+      { role: 'user', content: prompt.user },
+    ], { kind: 'json', temperature: 0.5, maxTokens: 4000,
+      onMeta: (m) => { if (m.usage) recordUsage(slug, { source: 'review', chapterId, usage: m.usage }); } });
+    const report = normalizeReaderReview(extractJson<unknown>(raw));
+    if (!report) return res.status(502).json({ error: '评审返回结构不可用，请重试' });
+    // 引证验真：每条 grievance 的 quote 落地到本章正文（与一致性检查同一口径）
+    for (const p of report.personas) for (const g of p.grievances) g.verified = verifyQuote(g.quote, content);
+    res.json({ report });
   } catch (err) {
     res.status(500).json({ error: (err as Error).message });
   }
