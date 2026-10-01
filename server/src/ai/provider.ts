@@ -63,7 +63,7 @@ export function* mockStream(kind: 'json' | 'prose' | 'summary', promptHint: stri
   }
 }
 
-function yieldMockJson(promptHint: string): string {
+export function yieldMockJson(promptHint: string): string {
   // 依据各任务提示词里最独特的字样判定任务类型（提示词都是中文）
   // 注意顺序：bible 提示词里也含"分卷大纲"，必须先于 volumes 判定
   if (promptHint.includes('设定集初稿') || promptHint.includes('产出这本书') || promptHint.includes('设定集为')) {
@@ -75,7 +75,7 @@ function yieldMockJson(promptHint: string): string {
       worldview: '【演示】架空王朝"晏"，重开漕运后中央与州府博弈加剧。仵作行会被官府收编，验尸记录成为刑名凭据的核心。底层有过所文书制度，行走千里皆需勘合。',
     });
   }
-  if (promptHint.includes('逐章细纲') || promptHint.includes('逐章')) {
+  if (promptHint.includes('逐章细纲')) {
     const chapters: Array<{ title: string; beat: string; pov: string; characters: string[] }> = [];
     const starts = ['雪夜来客', '盐车疑云', '停尸房的灯', '第一个证人', '递错的钥匙', '旧档缺页', '酒肆暗语', '门房之死', '反咬一口', '立字为据', '冬汛将至', '裂缝更深'];
     starts.forEach((t, i) => {

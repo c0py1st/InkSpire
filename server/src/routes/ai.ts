@@ -1060,7 +1060,14 @@ aiRouter.post('/projects/:slug/golden-three', async (req, res) => {
       onMeta: (m) => { if (m.usage) recordUsage(slug, { source: 'golden', usage: m.usage }); } });
     const report = normalizeGoldenThree(extractJson<unknown>(raw));
     if (!report) return res.status(502).json({ error: '评审返回结构不可用，请重试' });
-    // 每章引证按各自正文验真（index 1→firstChapters[0]…）
+    // 章节身份按位置以真实前三章覆盖：模型只许裁决，不许自报坐标（echo 错位/漏 index 会毁掉验真与跳转）
+    report.chapters = report.chapters.slice(0, firstChapters.length).map((ch, i) => ({
+      ...ch,
+      index: i + 1,
+      title: firstChapters[i].title,
+      chapterId: firstChapters[i].id,
+    }));
+    // 每章引证按各自正文验真
     for (const ch of report.chapters) {
       const src = firstChapters[ch.index - 1];
       for (const g of ch.grievances) g.verified = src ? verifyQuote(g.quote, src.content) : false;

@@ -120,3 +120,21 @@ describe('normalizeGoldenThree', () => {
     expect(normalizeGoldenThree({})).toBeNull();
   });
 });
+
+describe('mock 分支不串场（黄金三章含"逐章"曾误撞细纲分支）', () => {
+  it('golden prompt 走 golden 分支，beats prompt 走细纲分支，reader 走 persona 分支', async () => {
+    const { yieldMockJson } = await import('./ai/provider');
+    const { beatsPrompt } = await import('./ai/prompts/beats');
+    const goldenU = goldenThreePrompt({ chapters: [{ index: 1, title: '甲', content: '正文' }], genre: '古' }).user;
+    const g = JSON.parse(yieldMockJson(goldenU));
+    expect(g.chapters[0].verdict).toBeDefined();               // golden 形状
+    expect(g.retentionScore).toBeDefined();
+    const beatsU = beatsPrompt({ premise: 'p', genre: 'g', coreConflict: 'c', endingVision: 'e', styleGuide: 's' }, '卷', '弧', 3, []).user;
+    const bl = JSON.parse(yieldMockJson(beatsU));
+    expect(bl.chapters[0].beat).toContain('本章推进');            // 细纲形状
+    expect(bl.chapters.length).toBeGreaterThan(1);
+    const readerU = readerReviewPrompt({ chapterTitle: '甲', content: 'c', webnovel: true }).user;
+    const r = JSON.parse(yieldMockJson(readerU));
+    expect(Array.isArray(r.personas)).toBe(true);               // persona 形状
+  });
+});
