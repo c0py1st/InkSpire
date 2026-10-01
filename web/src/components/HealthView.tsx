@@ -9,6 +9,7 @@ import { Btn } from './primitives';
  */
 export function HealthView() {
   const slug = useStore((s) => s.slug);
+  const webnovelMode = useStore((s) => !!s.bundle?.meta.webnovelMode);
   const openChapter = useStore((s) => s.openChapter);
   const rep = useStore((s) => s.health);
   const busy = useStore((s) => s.healthLoading);
@@ -62,6 +63,37 @@ export function HealthView() {
                     <span className="hk-tag">应收于《{o.payoffTitle}》</span>
                   </div>
                 ))}
+              </Section>
+            )}
+
+            {/* 网文节奏（仅开启网文模式的书写）：爽点密度/断档红线/钩子缺口 */}
+            {webnovelMode && (
+              <Section
+                title="网文节奏红线"
+                tone={rep.pacing.longestDry >= rep.pacing.warnAfter ? 'danger' : rep.pacing.longestDry >= 3 ? 'warn' : 'ok'}
+                right={<span className="hk-counts">爽点覆盖 {rep.pacing.chapters ? Math.round((rep.pacing.payoffChapters / rep.pacing.chapters) * 100) : 0}% · 钩子覆盖 {rep.pacing.chapters ? Math.round((rep.pacing.hookChapters / rep.pacing.chapters) * 100) : 0}%</span>}
+              >
+                {rep.pacing.longestDry >= rep.pacing.warnAfter ? (
+                  <div className="tl-detail" style={{ color: 'var(--danger)', marginBottom: 6 }}>
+                    最长爽点断档 {rep.pacing.longestDry} 章，已到连载红线（≥{rep.pacing.warnAfter}）——读者的耐心按章计费。
+                  </div>
+                ) : (
+                  <div className="tl-detail" style={{ marginBottom: 6 }}>最长爽点断档 {rep.pacing.longestDry} 章（红线 {rep.pacing.warnAfter} 章）。</div>
+                )}
+                {rep.pacing.dryRuns.map((r) => (
+                  <div key={r.fromChapterId} className="hk-row" style={{ cursor: 'default' }}>
+                    <span className="hk-main">断档 {r.length} 章</span>
+                    <span className="hk-tag">{r.fromChapterId} → {r.toChapterId}</span>
+                  </div>
+                ))}
+                {rep.pacing.missingHook.length > 0 && (
+                  <div style={{ marginTop: 6 }}>
+                    <span className="pane-sub">缺章末钩子：{rep.pacing.missingHook.length} 章 · </span>
+                    {rep.pacing.missingHook.slice(0, 8).map((m) => (
+                      <span key={m.chapterId} className="tl-chip" style={{ cursor: 'pointer', marginRight: 5 }} onClick={() => void openChapter(m.chapterId)}>{m.title}</span>
+                    ))}
+                  </div>
+                )}
               </Section>
             )}
 

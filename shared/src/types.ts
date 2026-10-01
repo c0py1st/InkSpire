@@ -369,6 +369,21 @@ export interface HealthReport {
     chapters: Array<{ chapterId: string; title: string; high: number; medium: number; low: number }>;
   };
   usage: CacheStats;
+  /** 网文节奏分析（E3）：始终计算，UI 仅在 webnovelMode 下展示 */
+  pacing: WebnovelPacing;
+}
+
+/** 一段"爽点断档"：从 fromTitle 到 toTitle 连续 length 章没标爽点 */
+export interface PacingDryRun { fromChapterId: string; toChapterId: string; length: number }
+
+export interface WebnovelPacing {
+  chapters: number;          // 大纲总章数
+  payoffChapters: number;    // 标了爽点的章数
+  hookChapters: number;      // 标了章末钩子的章数
+  longestDry: number;        // 最长爽点断档（连续无爽点章数）
+  warnAfter: number;         // 断档红线阈值：longestDry ≥ 此值应告警
+  dryRuns: PacingDryRun[];   // 断档区间（按长度降序，前 5 段，仅 ≥2 章的）
+  missingHook: Array<{ chapterId: string; title: string }>;  // 缺钩子的章（前 12 个）
 }
 
 /* ---------------- 内置预设 ---------------- */

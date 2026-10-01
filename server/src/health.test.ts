@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { CharacterCard, Foreshadow, Outline } from '../../shared/src/types';
-import { buildHealthReport } from './health-aggregate';
+import { analyzePacing, buildHealthReport } from './health-aggregate';
 import { emptyCacheStats } from './cache-stats';
 import type { L0Report } from './l0-report';
 
@@ -68,5 +68,49 @@ describe('buildHealthReport', () => {
     expect(h.l0).toMatchObject({ high: 2, medium: 1, low: 1 });
     // 排序：high 数降序，其次 medium+low 降序 → v01c001(1h1m) 先于 v01c003(1h0m)，v01c002(0h1l) 最后
     expect(h.l0.chapters.map((c) => c.chapterId)).toEqual(['v01c001', 'v01c003', 'v01c002']);
+  });
+});
+
+/* ---------------- E3 网文节奏分析 ---------------- */
+
+describe('analyzePacing', () => {
+  // 6 章大纲，按位标爽点/钩子
+  function book6(payoffAt: number[], hookAt: number[] = []) {
+    return {
+      premise: 'p', genre: 'g', coreConflict: 'c', endingVision: 'e', styleGuide: 's',
+      volumes: [{ id: 'v01', title: '卷一', summary: '', chapters: Array.from({ length: 6 }, (_, i) => ({
+        id: `v01c00${i + 1}`, title: `章${i + 1}`, beat: 'b', status: 'todo' as const,
+        ...(payoffAt.includes(i) ? { payoffPoint: `爽${i}` } : {}),
+        ...(hookAt.includes(i) ? { chapterHook: `钩${i}` } : {}),
+      })) }],
+    } as Outline;
+  }
+
+  it('爽点/钩子计数与密度基元', () => {
+    const p = analyzePacing(book6([0, 4], [0, 1, 2]));
+    expect(p.chapters).toBe(6);
+    expect(p.payoffChapters).toBe(2);
+    expect(p.hookChapters).toBe(3);
+  });
+
+  it('最长断档：连续无爽点区间正确切出，单章空洞不计为断档段', () => {
+    const p = analyzePacing(book6([3]));       // 爽点只在 index3 → 前面 0..2 连续 3 章干，后面 4..5 连续 2 章干
+    expect(p.longestDry).toBe(3);
+    expect(p.dryRuns[0]).toMatchObject({ fromChapterId: 'v01c001', toChapterId: 'v01c003', length: 3 });
+    expect(p.dryRuns.map((r) => r.length)).toEqual([3, 2]);   // 降序，≥2 才留
+  });
+
+  it('全无爽点时整段为一条断档；warnAfter 随数据下发', () => {
+    const p = analyzePacing(book6([]));
+    expect(p.longestDry).toBe(6);
+    expect(p.dryRuns).toHaveLength(1);
+    expect(p.warnAfter).toBe(5);
+  });
+
+  it('缺钩子的章被列出（含标题），全有钩子则空', () => {
+    const p = analyzePacing(book6([0], [0]));   // 只有章1 有钩子
+    expect(p.missingHook.map((m) => m.chapterId)).toEqual(['v01c002', 'v01c003', 'v01c004', 'v01c005', 'v01c006']);
+    expect(p.missingHook[0].title).toBe('章2');
+    expect(analyzePacing(book6([0], [0, 1, 2, 3, 4, 5])).missingHook).toEqual([]);
   });
 });
