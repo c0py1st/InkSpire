@@ -341,12 +341,26 @@ export const useStore = create<Store>((set, get) => ({
   },
 
   async openProject(slug) {
-    try {
-      const bundle = await api.getBundle(slug);
-      set({ slug, bundle, centerView: 'outline', chapter: null, suggestionsSeen: bundle.suggestions.length, health: null, events: null });
-    } catch (err) {
-      get().toast(`打开作品失败：${(err as Error).message}`, 'error');
+    // 启动竞态软重试：vite 比后端先就绪的 2~4 秒里打开作品会连不上；404（书真不存在）不重试，
+    // 其余失败等 800ms 再试一次，仍失败才报错
+    type BundleWire = Bundle & { wordCounts: Record<string, number> };
+    let bundle: BundleWire | null = null;
+    let lastErr: Error | null = null;
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try {
+        bundle = await api.getBundle(slug);
+        break;
+      } catch (err) {
+        lastErr = err as Error;
+        if (/404/.test(lastErr.message)) break;
+        if (attempt === 0) await new Promise((r) => setTimeout(r, 800));
+      }
     }
+    if (!bundle) {
+      get().toast(`打开作品失败：${lastErr?.message ?? '未知错误'}（后端可能仍在启动，几秒后可重试）`, 'error');
+      return;
+    }
+    set({ slug, bundle, centerView: 'outline', chapter: null, suggestionsSeen: bundle.suggestions.length, health: null, events: null });
   },
 
   backHome() {
