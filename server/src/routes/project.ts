@@ -4,8 +4,8 @@ import {
 } from '../../../shared/src/types';
 import { countChars } from '../../../shared/src/util';
 import {
-  getMeta, listChapterBackups, listChapters, loadBundle, loadChat, loadEvents, loadForeshadows, loadLoreActivated, loadLorebook, loadOutline, loadSummaries, readChapter, readChapterBackup,
-  sanitizeLoreEntries, saveCharacters, saveChapterBody, saveChat, saveEvents, saveLorebook, saveMeta, saveOutline, saveForeshadows, saveSummaries, saveSuggestions, saveWorldview,
+  getMeta, listChapterBackups, listChapters, loadBundle, loadChat, loadEvents, loadExemplars, loadForeshadows, loadLoreActivated, loadLorebook, loadOutline, loadSummaries, readChapter, readChapterBackup,
+  sanitizeLoreEntries, sanitizeStyleExemplars, saveCharacters, saveChapterBody, saveChat, saveEvents, saveExemplars, saveLorebook, saveMeta, saveOutline, saveForeshadows, saveSummaries, saveSuggestions, saveWorldview,
 } from '../fs-store';
 import { searchChapters } from '../chapter-index';
 import { loadCacheStats, resetCacheStats } from '../cache-stats';
@@ -229,6 +229,27 @@ projectRouter.get('/:slug/lorebook/trace', (req, res) => {
     res.json(loadLoreActivated(req.params.slug));
   } catch (err) {
     res.status(404).json({ error: (err as Error).message });
+  }
+});
+
+/* ---------------- 风格范文库（exemplars.json，真相源） ---------------- */
+
+projectRouter.get('/:slug/exemplars', (req, res) => {
+  try {
+    res.json(loadExemplars(req.params.slug));
+  } catch (err) {
+    res.status(404).json({ error: (err as Error).message });
+  }
+});
+
+/** 整表覆盖：消毒回显同 lorebook；「一键收录」是 append 后整写，去重在前端/调用侧做 */
+projectRouter.put('/:slug/exemplars', (req, res) => {
+  try {
+    const clean = sanitizeStyleExemplars(req.body);
+    saveExemplars(req.params.slug, clean);
+    res.json({ ok: true, entries: clean });
+  } catch (err) {
+    res.status(400).json({ error: (err as Error).message });
   }
 });
 

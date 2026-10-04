@@ -1,6 +1,6 @@
 /** 与后端的全部交互。SSE 统一走 sse()。 */
 import type {
-  AppConfig, Bundle, ChatMessageRecord, ChapterFile, ChapterStatus, CharacterCard, ConsistencyIssue, Foreshadow, GenChapterResult, GoldenThreeReview, HealthReport, Kernel, LoreEntry, LoreTraceEntry, Outline, ProjectMeta, ProposalRequest, ReaderReview, SearchHit, StoryEvent, Suggestion, Volume, VolumeBrief,
+  AppConfig, Bundle, ChatMessageRecord, ChapterFile, ChapterStatus, CharacterCard, ConsistencyIssue, Foreshadow, GenChapterResult, GoldenThreeReview, HealthReport, Kernel, LoreEntry, LoreTraceEntry, Outline, ProjectMeta, ProposalRequest, ReaderReview, SearchHit, StoryEvent, StyleExemplar, Suggestion, Volume, VolumeBrief,
 } from '../../../shared/src/types';
 
 async function json<T>(res: Response): Promise<T> {
@@ -163,6 +163,11 @@ export const api = {
 
   /** 通读模式：全部章节正文按阅读序一次下发（只读） */
   readThrough: (slug: string) => get<Array<{ id: string; title: string; content: string }>>(`/api/projects/${slug}/read-through`),
+
+  /** 风格范文库（A2）：整表读/消毒后整表写 */
+  getExemplars: (slug: string) => get<StyleExemplar[]>(`/api/projects/${slug}/exemplars`),
+  saveExemplars: (slug: string, entries: StyleExemplar[]) =>
+    put<{ ok: true; entries: StyleExemplar[] }>(`/api/projects/${slug}/exemplars`, entries),
 
   // 流式任务
   wizardKernel: (ideaPrompt: string, scale: { volumeCount: number; chaptersPerVolume: number; wordsPerChapter: number }, onDelta: (t: string) => void) =>

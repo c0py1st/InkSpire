@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useShallow } from 'zustand/react/shallow';
-import type { CharacterCard, LoreEntry, Outline, StateEntry } from '../../../shared/src/types';
+import type { CharacterCard, LoreEntry, Outline, StateEntry, StyleExemplar } from '../../../shared/src/types';
 import { useStore } from '../state/store';
 import { Btn } from './primitives';
 
@@ -118,6 +118,9 @@ export function BibleView() {
 
         <div className="hr" />
         <LorebookSection outline={bundle.outline} />
+
+        <div className="hr" />
+        <ExemplarSection />
 
         <div style={{ height: 60 }} />
       </div>
@@ -237,6 +240,70 @@ function LorebookSection({ outline }: { outline: Outline | null }) {
       <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
         <Btn ghost onClick={() => setDraft((ds) => [...ds, { id: `l-${Date.now()}`, title: '新条目', keys: [], content: '' }])}>＋ 加条目</Btn>
         <Btn primary onClick={() => void save()}>保存世界书</Btn>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * 风格范文库编辑区（A2c）：主要入口是评审面板"一键收录"，这里是誊录/纠错/停用处。
+ * 数据走 store.loadExemplars/saveExemplarList；草稿重置用渲染期比较（同 LorebookSection 手法）。
+ */
+function ExemplarSection() {
+  const { exemplars, loadExemplars, saveExemplarList, toast } = useStore(useShallow((s) => ({
+    exemplars: s.exemplars, loadExemplars: s.loadExemplars, saveExemplarList: s.saveExemplarList, toast: s.toast,
+  })));
+  const [draft, setDraft] = useState<StyleExemplar[]>(exemplars ?? []);
+  const [lastStore, setLastStore] = useState(exemplars);
+  if (exemplars !== lastStore) {
+    setLastStore(exemplars);
+    setDraft(exemplars ?? []);
+  }
+  useEffect(() => { void loadExemplars(); }, [loadExemplars]);
+
+  const patch = (i: number, p: Partial<StyleExemplar>) => setDraft((ds) => ds.map((e, k) => (k === i ? { ...e, ...p } : e)));
+
+  async function save() {
+    const dead = draft.filter((e) => !e.constant && e.keys.length === 0);
+    if (dead.length) toast(`有 ${dead.length} 条无触发词且未勾常驻，将永不激活`, 'error');
+    if (await saveExemplarList(draft)) toast('风格范文库已保存', 'ok');
+  }
+
+  return (
+    <div>
+      <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, marginBottom: 4 }}>
+        <h3 className="pane-title" style={{ fontSize: 18 }}>风格范文库 · 以本书好段落示范</h3>
+        <span className="pane-sub" style={{ fontSize: 12 }}>写章时按触发词命中注入（只模仿笔法，严禁抄情节）；主入口是「读者评审」面板的逐段收录，这里做誊录与纠错</span>
+      </div>
+
+      {draft.map((e, i) => (
+        <div key={e.id} className="vol-block" style={{ padding: 12, opacity: e.enabled === false ? 0.55 : 1 }}>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 8 }}>
+            <input type="text" style={{ fontWeight: 700, flex: 1 }} value={e.title} placeholder="条名" onChange={(ev) => patch(i, { title: ev.target.value })} />
+            <span style={{ fontSize: 11, opacity: 0.65, whiteSpace: 'nowrap' }}>{e.sourceChapterTitle ? `来自《${e.sourceChapterTitle}》` : '手动条目'}</span>
+            <button className="icon-btn danger" title="删除条目" onClick={() => setDraft((ds) => ds.filter((_, k) => k !== i))}>✕</button>
+          </div>
+          <div className="field"><label>范文正文（建议逐字摘自本书定稿正文）</label>
+            <textarea style={{ minHeight: 64 }} value={e.content} onChange={(ev) => patch(i, { content: ev.target.value })} />
+          </div>
+          <div style={{ display: 'flex', gap: 10 }}>
+            <div className="field" style={{ flex: 2, marginBottom: 0 }}><label>触发词（逗号/顿号/空格分隔）</label>
+              <input type="text" value={e.keys.join(', ')} placeholder="例：雨夜, 对峙, 验尸" onChange={(ev) => patch(i, { keys: parseKeys(ev.target.value) })} />
+            </div>
+            <div className="field" style={{ flex: 1, marginBottom: 0 }}><label>场景标签</label>
+              <input type="text" value={e.sceneTag ?? ''} placeholder="打斗/环境/心理…" onChange={(ev) => patch(i, { sceneTag: ev.target.value.trim() || undefined })} />
+            </div>
+          </div>
+          <div style={{ display: 'flex', gap: 14, alignItems: 'center', fontSize: 13, marginTop: 6 }}>
+            <label className="wn-toggle" style={{ margin: 0 }}><input type="checkbox" checked={e.enabled !== false} onChange={(ev) => patch(i, { enabled: ev.target.checked || undefined })} /> 启用</label>
+            <label className="wn-toggle" style={{ margin: 0 }}><input type="checkbox" checked={!!e.constant} onChange={(ev) => patch(i, { constant: ev.target.checked || undefined })} /> 常驻（每章都注入）</label>
+          </div>
+        </div>
+      ))}
+
+      <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+        <Btn ghost onClick={() => setDraft((ds) => [...ds, { id: `x-${Date.now()}`, title: '新范文', keys: [], content: '', at: new Date().toISOString() }])}>＋ 加范文</Btn>
+        <Btn primary onClick={() => void save()}>保存范文库</Btn>
       </div>
     </div>
   );

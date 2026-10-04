@@ -42,6 +42,10 @@
   - [完成] A1 对话 agent 的 read_lorebook 工具：世界书进 ReAct 查询链（keyword/章生效范围过滤，含停用与契约标注）
   - [完成] B1 通读模式：GET /:slug/read-through 只读连排 + 前端全书搜索高亮（findTextRanges 纯函数+单测）
     逐处跳转（Enter/Shift+Enter）+ 章题跳编辑器 + IntersectionObserver 分块懒加载（浏览器实测 9 处命中跳转）
+  - [完成] A2 风格范文库：评审契约 highlights+逐字验真丢弃假引文 → 评审面板一键收录（去重）→
+    exemplars.json 真相源 → 复用 activateLore 独立预算（1500）注入【风格范文】块 → 留痕 style 段；
+    设定集编辑段；浏览器实测（mock 评审摘真句→收录落盘→已收录态→再收不重复）
+  - [下一站] B2 世界书/范文 UI 增强（激活测试器等）→ C1 Tauri（需先拍板依赖破例）
   - 每阶段独立提交、过全量门禁；推送等作者说"推送"
 
 ## 记忆分层同构提示

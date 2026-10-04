@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useShallow } from 'zustand/react/shallow';
-import type { ChatMessageRecord, ChatProposalRecord, ConsistencyIssue, ProposalKind, ReaderReview } from '../../../shared/src/types';
+import type { ChatMessageRecord, ChatProposalRecord, ConsistencyIssue, ProposalKind, ReaderReview, StyleExemplar } from '../../../shared/src/types';
 import { PROPOSAL_LABELS } from '../../../shared/src/types';
 import { api } from '../api/client';
 import { useStore } from '../state/store';
@@ -58,6 +58,8 @@ export function AiDrawer() {
   const [review, setReview] = useState<'idle' | 'loading' | ReaderReview | null>('idle');
   const [reviewOpen, setReviewOpen] = useState(false);
   const [reviewChapter, setReviewChapter] = useState('');
+  // A2：本次评审里已点过"收录"的高亮候选下标（重审时清零）
+  const [collectedIdx, setCollectedIdx] = useState<Set<number>>(new Set());
 
   const bodyRef = useRef<HTMLDivElement>(null);
 
@@ -291,6 +293,7 @@ export function AiDrawer() {
     if (!slug || !chapter) return;
     setReview('loading');
     setReviewOpen(true);
+    setCollectedIdx(new Set());
     try {
       const res = await api.review(slug, chapter.id);
       setReview(res.report);
@@ -299,6 +302,41 @@ export function AiDrawer() {
       setReview(null);
       setReviewOpen(false);
       toast((err as Error).message, 'error');
+    }
+  }
+
+  /* A2：把验真通过的高亮候选收录进风格范文库（整批或单条；按正文去重，重复收录无副作用） */
+  async function collectHighlights(one?: number) {
+    if (!slug || !chapter || !review || review === 'loading' || review === 'idle' || !review.highlights?.length) return;
+    const list = one === undefined ? review.highlights : [review.highlights[one]];
+    try {
+      const existing = await api.getExemplars(slug);
+      const seen = new Set(existing.map((e) => e.content));
+      const fresh: StyleExemplar[] = list
+        .filter((h) => !seen.has(h.excerpt))
+        .map((h, i) => ({
+          id: `x-${Date.now()}-${i}`,
+          title: `《${chapter.title}》·${h.sceneTag || '范文'}`,
+          content: h.excerpt,
+          keys: h.keys,
+          ...(h.sceneTag ? { sceneTag: h.sceneTag } : {}),
+          sourceChapterId: chapter.id,
+          sourceChapterTitle: chapter.title,
+          at: new Date().toISOString(),
+        }));
+      if (!fresh.length) { toast('所选段落均已在风格库中', 'ok'); }
+      else {
+        await api.saveExemplars(slug, [...existing, ...fresh]);
+        toast(`已收录 ${fresh.length} 段进风格范文库`, 'ok');
+      }
+      setCollectedIdx((s) => {
+        const n = new Set(s);
+        if (one === undefined) review.highlights!.forEach((_, i) => n.add(i));
+        else n.add(one);
+        return n;
+      });
+    } catch (err) {
+      toast(`收录失败：${(err as Error).message}`, 'error');
     }
   }
 
@@ -570,6 +608,29 @@ export function AiDrawer() {
                   <div className="rv-fixes">
                     <div style={{ fontSize: 12, color: 'var(--text-faint)', marginBottom: 4 }}>改稿优先级</div>
                     {review.topFixes.map((f, i) => <div key={i} className="rv-fix">{i + 1}. {f}</div>)}
+                  </div>
+                )}
+                {review.highlights && review.highlights.length > 0 && (
+                  <div className="rv-fixes" style={{ marginTop: 10 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                      <span style={{ fontSize: 12, color: 'var(--text-faint)', flex: 1 }}>
+                        以下段落已逐字验真——收录进风格范文库后，写同类场景的章会按触发词命中注入（只学笔法不抄情节）
+                      </span>
+                      <Btn small ghost onClick={() => void collectHighlights()} disabled={[...review.highlights.keys()].every((i) => collectedIdx.has(i))}>
+                        全部收录
+                      </Btn>
+                    </div>
+                    {review.highlights.map((h, i) => (
+                      <div key={i} className="rv-fix" style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                        <span style={{ flex: 1, minWidth: 0 }}>
+                          「{h.excerpt.length > 90 ? h.excerpt.slice(0, 90) + '…' : h.excerpt}」
+                          <span style={{ color: 'var(--text-faint)', fontSize: 11 }}>　触发：{h.keys.join('、') || '（无，需手动补）'}{h.sceneTag ? `｜${h.sceneTag}` : ''}</span>
+                        </span>
+                        <Btn small ghost onClick={() => void collectHighlights(i)} disabled={collectedIdx.has(i)}>
+                          {collectedIdx.has(i) ? '已收录' : '收录'}
+                        </Btn>
+                      </div>
+                    ))}
                   </div>
                 )}
               </>

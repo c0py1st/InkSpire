@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import type {
-  AppConfig, Bundle, ChapterStatus, CharacterCard, Foreshadow, GenChapterResult, HealthReport, LoreEntry, LoreTraceEntry, Outline, ProjectMeta, ProposalKind, StoryEvent,
+  AppConfig, Bundle, ChapterStatus, CharacterCard, Foreshadow, GenChapterResult, HealthReport, LoreEntry, LoreTraceEntry, Outline, StyleExemplar, ProjectMeta, ProposalKind, StoryEvent,
 } from '../../../shared/src/types';
 import { atParagraphStart, ensureParagraphIndent } from '../../../shared/src/util';
 import { api } from '../api/client';
@@ -75,6 +75,7 @@ interface Store {
   events: StoryEvent[] | null;
   lorebook: LoreEntry[] | null;
   loreTrace: Record<string, LoreTraceEntry> | null;
+  exemplars: StyleExemplar[] | null;
   readChapters: Array<{ id: string; title: string; content: string }> | null;
 
   // 编辑器
@@ -112,6 +113,8 @@ interface Store {
   deleteStoryEvent: (id: string) => Promise<void>;
   loadLorebook: () => Promise<void>;
   saveLorebook: (entries: LoreEntry[]) => Promise<boolean>;
+  loadExemplars: () => Promise<void>;
+  saveExemplarList: (entries: StyleExemplar[]) => Promise<boolean>;
   loadReadThrough: () => Promise<void>;
   openProject: (slug: string) => Promise<void>;
   backHome: () => void;
@@ -202,6 +205,7 @@ export const useStore = create<Store>((set, get) => ({
   events: null,
   lorebook: null,
   loreTrace: null,
+  exemplars: null,
   readChapters: null,
 
   chapter: null,
@@ -387,6 +391,29 @@ export const useStore = create<Store>((set, get) => ({
     }
   },
 
+  async loadExemplars() {
+    const { slug } = get();
+    if (!slug) return;
+    try {
+      set({ exemplars: await api.getExemplars(slug) });
+    } catch (err) {
+      get().toast(`风格范文读取失败：${(err as Error).message}`, 'error');
+    }
+  },
+
+  async saveExemplarList(entries) {
+    const { slug } = get();
+    if (!slug) return false;
+    try {
+      const r = await api.saveExemplars(slug, entries);
+      set({ exemplars: r.entries });
+      return true;
+    } catch (err) {
+      get().toast(`风格范文保存失败：${(err as Error).message}`, 'error');
+      return false;
+    }
+  },
+
   async openProject(slug) {
     // 启动竞态软重试：vite 比后端先就绪的 2~4 秒里打开作品会连不上；404（书真不存在）不重试，
     // 其余失败等 800ms 再试一次，仍失败才报错
@@ -407,7 +434,7 @@ export const useStore = create<Store>((set, get) => ({
       get().toast(`打开作品失败：${lastErr?.message ?? '未知错误'}（后端可能仍在启动，几秒后可重试）`, 'error');
       return;
     }
-    set({ slug, bundle, centerView: 'outline', chapter: null, suggestionsSeen: bundle.suggestions.length, health: null, events: null, lorebook: null, loreTrace: null, readChapters: null });
+    set({ slug, bundle, centerView: 'outline', chapter: null, suggestionsSeen: bundle.suggestions.length, health: null, events: null, lorebook: null, loreTrace: null, exemplars: null, readChapters: null });
   },
 
   backHome() {
@@ -415,7 +442,7 @@ export const useStore = create<Store>((set, get) => ({
     if (prev.chapter && prev.saveState === 'dirty') {
       void prev.saveChapter();
     }
-    set({ slug: null, bundle: null, chapter: null, centerView: 'outline', health: null, events: null, lorebook: null, loreTrace: null, readChapters: null });
+    set({ slug: null, bundle: null, chapter: null, centerView: 'outline', health: null, events: null, lorebook: null, loreTrace: null, exemplars: null, readChapters: null });
     void get().loadProjects();
   },
 
