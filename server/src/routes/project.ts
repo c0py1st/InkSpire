@@ -4,9 +4,11 @@ import {
 } from '../../../shared/src/types';
 import { countChars } from '../../../shared/src/util';
 import {
-  getMeta, listChapterBackups, listChapters, loadBundle, loadChat, loadEvents, loadExemplars, loadForeshadows, loadLoreActivated, loadLorebook, loadOutline, loadSummaries, readChapter, readChapterBackup,
+  getMeta, listChapterBackups, listChapters, loadBundle, loadChat, loadEvents, loadExemplars, loadForeshadows, loadLoreActivated, loadLorebook, loadOutline, loadRecaps, loadSummaries, readChapter, readChapterBackup,
   sanitizeLoreEntries, sanitizeStyleExemplars, saveCharacters, saveChapterBody, saveChat, saveEvents, saveExemplars, saveLorebook, saveMeta, saveOutline, saveForeshadows, saveSummaries, saveSuggestions, saveWorldview,
 } from '../fs-store';
+import { buildChapterContext, chapterCorpus, flattenChapterIds, locateChapter, LORE_BUDGET_CHARS, STYLE_BUDGET_CHARS } from '../ai/memory';
+import { explainLoreActivation } from '../../../shared/src/lore';
 import { searchChapters } from '../chapter-index';
 import { loadCacheStats, resetCacheStats } from '../cache-stats';
 
@@ -248,6 +250,40 @@ projectRouter.put('/:slug/exemplars', (req, res) => {
     const clean = sanitizeStyleExemplars(req.body);
     saveExemplars(req.params.slug, clean);
     res.json({ ok: true, entries: clean });
+  } catch (err) {
+    res.status(400).json({ error: (err as Error).message });
+  }
+});
+
+/** B2 激活测试器：对所选章逐条解释"为什么注入/没注入"——语料构造、预算、判定函数全部与真实生成同源 */
+projectRouter.get('/:slug/lore-test/:chapterId', (req, res) => {
+  try {
+    const { slug, chapterId } = req.params;
+    const kind = req.query.kind === 'style' ? 'style' : 'lore';
+    const outline = loadOutline(slug);
+    if (!outline) return res.status(400).json({ error: '本书还没有大纲' });
+    const loc = locateChapter(outline, chapterId);
+    // prevTail 与生成路径同法取（跨卷衔接）
+    const chapters = listChapters(slug);
+    let prevId: string | undefined;
+    if (loc.chapterIndex > 0) prevId = loc.volume.chapters[loc.chapterIndex - 1].id;
+    else if (loc.volumeIndex > 0) { const pv = outline.volumes[loc.volumeIndex - 1]; prevId = pv.chapters[pv.chapters.length - 1]?.id; }
+    const ctx = buildChapterContext({
+      outline, chapterId, characters: [], worldview: '',
+      summaries: loadSummaries(slug), recaps: loadRecaps(slug),
+      prevChapterContent: prevId ? chapters.find((c) => c.id === prevId)?.content : undefined,
+      foreshadows: loadForeshadows(slug),
+    });
+    const entries = kind === 'style' ? loadExemplars(slug) : loadLorebook(slug);
+    const { items, used, budget } = explainLoreActivation({
+      entries,
+      order: flattenChapterIds(outline),
+      chapterId,
+      volumeId: loc.volume.id,
+      corpus: chapterCorpus(loc.chapter, ctx.prevTail, ctx.summaries),
+      budgetChars: kind === 'style' ? STYLE_BUDGET_CHARS : LORE_BUDGET_CHARS,
+    });
+    res.json({ kind, used, budget, items });
   } catch (err) {
     res.status(400).json({ error: (err as Error).message });
   }

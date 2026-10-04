@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { activateLore, loreBlockText, loreKeyHit } from '../../shared/src/lore';
+import { activateLore, explainLoreActivation, loreBlockText, loreKeyHit } from '../../shared/src/lore';
 import type { LoreEntry, Outline } from '../../shared/src/types';
 import { buildChapterContext } from './ai/memory';
 import { prosePrompt } from './ai/prompts/prose';
@@ -242,5 +242,47 @@ describe('A2b 风格范文注入挂接', () => {
       exemplars: [EX({ id: 'c1', keys: [], content: '短句为主，动作推情绪。', constant: true })],
     });
     expect(ctx.style).toContain('短句为主');
+  });
+});
+
+describe('B2 激活解释器 explainLoreActivation', () => {
+  const order = ['v01c001', 'v01c002', 'v01c003'];
+  const base = { order, chapterId: 'v01c002', corpus: '刀法 铃铛', budgetChars: 100 };
+  const map = (items: { id: string; verdict: string }[]) => Object.fromEntries(items.map((x) => [x.id, x.verdict]));
+
+  it('与 activateLore 判定同源：activated 集合完全一致', () => {
+    const entries = [
+      E({ id: 'a', keys: ['刀法'], content: 'x'.repeat(80) }),
+      E({ id: 'b', keys: ['铃铛'], content: 'y'.repeat(80) }),
+      E({ id: 'c', constant: true, content: 'z'.repeat(10) }),
+    ];
+    const act = activateLore({ ...base, entries }).activated.map((e) => e.id).sort();
+    const exp = explainLoreActivation({ ...base, entries });
+    expect(exp.items.filter((i) => i.verdict === 'activated').map((i) => i.id).sort()).toEqual(act);
+    // c(10) → a 命中但 80 装不进剩余 → dropped；hitKey 归因可见
+    const m = map(exp.items);
+    expect(m.c).toBe('activated');
+    expect(['dropped', 'activated']).toContain(m.a);
+    expect(exp.items.find((i) => i.id === 'b')?.hitKey).toBe('铃铛');
+  });
+
+  it('归因全覆盖：disabled/out-of-scope/no-hit/dropped 各归其位；used 累计与预算报出', () => {
+    const entries = [
+      E({ id: 'off', keys: ['刀法'], content: 'x', enabled: false }),
+      E({ id: 'sc', keys: ['刀法'], content: 'x', scope: { chapterFrom: 'v01c003' } }),
+      E({ id: 'nh', keys: ['不存在'], content: 'x' }),
+      E({ id: 'p9', keys: ['刀法'], content: '大'.repeat(98), priority: 9 }),
+      E({ id: 'fit', keys: ['铃铛'], content: '小'.repeat(4) }),
+    ];
+    const exp = explainLoreActivation({ ...base, entries });
+    const m = map(exp.items);
+    expect(m).toEqual({ off: 'disabled', sc: 'out-of-scope', nh: 'no-hit', p9: 'activated', fit: 'dropped' });
+    expect(exp.used).toBe(98);
+    expect(exp.budget).toBe(100);
+  });
+
+  it('章不在阅读序 → 全 out-of-scope（与 activateLore 全空一致）', () => {
+    const exp = explainLoreActivation({ ...base, chapterId: 'v99c999', entries: [E({ id: 'a', constant: true, keys: [], content: 'x' })] });
+    expect(exp.items[0].verdict).toBe('out-of-scope');
   });
 });

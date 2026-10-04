@@ -2,6 +2,7 @@
 import type {
   AppConfig, Bundle, ChatMessageRecord, ChapterFile, ChapterStatus, CharacterCard, ConsistencyIssue, Foreshadow, GenChapterResult, GoldenThreeReview, HealthReport, Kernel, LoreEntry, LoreTraceEntry, Outline, ProjectMeta, ProposalRequest, ReaderReview, SearchHit, StoryEvent, StyleExemplar, Suggestion, Volume, VolumeBrief,
 } from '../../../shared/src/types';
+import type { LoreTestReport } from '../../../shared/src/lore';
 
 async function json<T>(res: Response): Promise<T> {
   if (!res.ok) {
@@ -168,6 +169,10 @@ export const api = {
   getExemplars: (slug: string) => get<StyleExemplar[]>(`/api/projects/${slug}/exemplars`),
   saveExemplars: (slug: string, entries: StyleExemplar[]) =>
     put<{ ok: true; entries: StyleExemplar[] }>(`/api/projects/${slug}/exemplars`, entries),
+
+  /** B2 激活测试器：所选章对 world book / 范文库的逐条命中解释（与生成同源判定） */
+  loreTest: (slug: string, chapterId: string, kind: 'lore' | 'style') =>
+    get<LoreTestReport>(`/api/projects/${slug}/lore-test/${encodeURIComponent(chapterId)}?kind=${kind}`),
 
   // 流式任务
   wizardKernel: (ideaPrompt: string, scale: { volumeCount: number; chaptersPerVolume: number; wordsPerChapter: number }, onDelta: (t: string) => void) =>

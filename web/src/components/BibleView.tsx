@@ -1,6 +1,8 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import type { CharacterCard, LoreEntry, Outline, StateEntry, StyleExemplar } from '../../../shared/src/types';
+import type { LoreTestReport } from '../../../shared/src/lore';
+import { api } from '../api/client';
 import { useStore } from '../state/store';
 import { Btn } from './primitives';
 
@@ -120,7 +122,7 @@ export function BibleView() {
         <LorebookSection outline={bundle.outline} />
 
         <div className="hr" />
-        <ExemplarSection />
+        <ExemplarSection outline={bundle.outline} />
 
         <div style={{ height: 60 }} />
       </div>
@@ -188,7 +190,16 @@ function LorebookSection({ outline }: { outline: Outline | null }) {
       <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, marginBottom: 4 }}>
         <h3 className="pane-title" style={{ fontSize: 18 }}>世界书 · 按需激活</h3>
         <span className="pane-sub" style={{ fontSize: 12 }}>写章时只注入「触发词命中本章语料」的条目；勾选常驻则每章都注入</span>
+        {hit.size > 0 && (
+          <button className="icon-btn" style={{ width: 'auto', padding: '2px 10px', borderRadius: 'var(--r-pill)', fontSize: 12 }}
+            title="按历史激活章数降序重排草稿（点保存整表落盘才生效）"
+            onClick={() => setDraft((ds) => ds.slice().sort((a, b) => (hit.get(b.id)?.on ?? 0) - (hit.get(a.id)?.on ?? 0)))}>
+            按激活排序
+          </button>
+        )}
       </div>
+
+      <ActivationTester outline={outline} kind="lore" />
 
       {draft.map((e, i) => {
         const h = hit.get(e.id);
@@ -249,7 +260,7 @@ function LorebookSection({ outline }: { outline: Outline | null }) {
  * 风格范文库编辑区（A2c）：主要入口是评审面板"一键收录"，这里是誊录/纠错/停用处。
  * 数据走 store.loadExemplars/saveExemplarList；草稿重置用渲染期比较（同 LorebookSection 手法）。
  */
-function ExemplarSection() {
+function ExemplarSection({ outline }: { outline: Outline | null }) {
   const { exemplars, loadExemplars, saveExemplarList, toast } = useStore(useShallow((s) => ({
     exemplars: s.exemplars, loadExemplars: s.loadExemplars, saveExemplarList: s.saveExemplarList, toast: s.toast,
   })));
@@ -275,6 +286,8 @@ function ExemplarSection() {
         <h3 className="pane-title" style={{ fontSize: 18 }}>风格范文库 · 以本书好段落示范</h3>
         <span className="pane-sub" style={{ fontSize: 12 }}>写章时按触发词命中注入（只模仿笔法，严禁抄情节）；主入口是「读者评审」面板的逐段收录，这里做誊录与纠错</span>
       </div>
+
+      <ActivationTester outline={outline} kind="style" />
 
       {draft.map((e, i) => (
         <div key={e.id} className="vol-block" style={{ padding: 12, opacity: e.enabled === false ? 0.55 : 1 }}>
@@ -305,6 +318,74 @@ function ExemplarSection() {
         <Btn ghost onClick={() => setDraft((ds) => [...ds, { id: `x-${Date.now()}`, title: '新范文', keys: [], content: '', at: new Date().toISOString() }])}>＋ 加范文</Btn>
         <Btn primary onClick={() => void save()}>保存范文库</Btn>
       </div>
+    </div>
+  );
+}
+
+/** 激活判定的人话归因（B2 测试器） */
+const VERDICT_LABEL: Record<string, { t: string; c: string }> = {
+  'activated': { t: '✅ 激活', c: 'var(--ok)' },
+  'dropped': { t: '⚠️ 预算溢出被挤掉', c: 'var(--warn)' },
+  'no-hit': { t: '○ 触发词未命中', c: 'var(--text-faint)' },
+  'out-of-scope': { t: '⛔ 不在生效范围', c: 'var(--text-faint)' },
+  'disabled': { t: '⏸ 已停用', c: 'var(--text-faint)' },
+};
+
+/**
+ * 激活测试器（B2）：选一章 → 逐条解释"为什么注入/没注入"。
+ * 判定在服务端跑真·生成同源逻辑（同语料构造、同预算、同引擎），所见即所得。
+ */
+function ActivationTester({ outline, kind }: { outline: Outline | null; kind: 'lore' | 'style' }) {
+  const slug = useStore((s) => s.slug);
+  const toast = useStore((s) => s.toast);
+  const [ch, setCh] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [report, setReport] = useState<LoreTestReport | null>(null);
+  const chapters = useMemo(() => (outline?.volumes ?? []).flatMap((v) => v.chapters.map((c) => ({ id: c.id, label: `${v.title}·${c.title}` }))), [outline]);
+  const cur = ch && chapters.some((c) => c.id === ch) ? ch : (chapters[0]?.id ?? '');
+
+  async function run() {
+    if (!slug || !cur) return;
+    setBusy(true);
+    try {
+      setReport(await api.loreTest(slug, cur, kind));
+    } catch (err) {
+      toast(`测试失败：${(err as Error).message}`, 'error');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="vol-block" style={{ padding: 12, marginBottom: 10 }}>
+      <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+        <span style={{ fontSize: 13, fontWeight: 600 }}>激活测试</span>
+        <span style={{ fontSize: 12, opacity: 0.65 }}>按真实生成的同源判定解释每条{kind === 'lore' ? '世界书' : '范文'}的去向</span>
+        <select value={cur} onChange={(e) => { setCh(e.target.value); setReport(null); }} style={{ maxWidth: 220 }}>
+          {chapters.map((c) => <option key={c.id} value={c.id}>{c.label}</option>)}
+        </select>
+        <Btn small ghost onClick={() => void run()} disabled={!cur || busy}>{busy ? '测试中…' : '测一下'}</Btn>
+      </div>
+      {report && (
+        <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 4 }}>
+          <div style={{ fontSize: 12, opacity: 0.8 }}>
+            预算占用 {report.used}/{report.budget} 字 · 共 {report.items.length} 条
+          </div>
+          {report.items.map((it) => {
+            const v = VERDICT_LABEL[it.verdict] ?? VERDICT_LABEL['no-hit'];
+            return (
+              <div key={it.id} style={{ display: 'flex', gap: 8, alignItems: 'baseline', fontSize: 12.5, padding: '3px 8px', borderRadius: 'var(--r-sm)', background: 'var(--gray-2)' }}>
+                <span style={{ minWidth: 0, flex: 1, fontWeight: 600 }}>{it.title}</span>
+                <span style={{ opacity: 0.6 }}>{it.chars}字{it.constant ? '·常驻' : ''}{it.contract ? '·契约' : ''}</span>
+                <span style={{ color: v.c, whiteSpace: 'nowrap' }}>
+                  {v.t}{it.hitKey && it.verdict === 'activated' ? `（命中「${it.hitKey}」）` : ''}
+                </span>
+              </div>
+            );
+          })}
+          {report.items.length === 0 && <div style={{ fontSize: 12, opacity: 0.6 }}>（当前表为空，先在下方添加条目）</div>}
+        </div>
+      )}
     </div>
   );
 }

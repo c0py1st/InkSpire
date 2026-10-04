@@ -27,8 +27,22 @@ const SUMMARY_SLACK_CHARS = 4000;     // 量化滑窗余量：整块超过 预�
 const SUMMARY_DISCARD_BATCH = 8;      // 量化丢弃批（条）：丢弃数向上取整到此批的倍数，头部连续多章逐字节不变，前缀缓存才有命中窗口
 const SUMMARY_LINE_CAP = 1500;        // 单条定长截断上限：定长即字节稳定，不随预算余量浮动
 const PREV_TAIL_CHARS = 1500;
-const LORE_BUDGET_CHARS = 4000;   // 世界书本章激活注入的内容字符预算（contract 契约条豁免）
-const STYLE_BUDGET_CHARS = 1500;  // 风格范文独立预算（A2）：范文宜短，与 lorebook 互不侵占
+export const LORE_BUDGET_CHARS = 4000;   // 世界书本章激活注入的内容字符预算（contract 契约条豁免）
+export const STYLE_BUDGET_CHARS = 1500;  // 风格范文独立预算（A2）：范文宜短，与 lorebook 互不侵占
+
+/**
+ * 章级激活语料（触发词只在此文本上扫描）：章题/beat/POV/出场人物/爽点/钩子/上章结尾/前情摘要。
+ * 刻意不含世界观与人物卡全文——那是常驻信息，命中它们会让每条设定都像常驻。
+ * 导出给 B2 测试器复用：同一构造函数保证"测试结果=真实生成行为"。
+ */
+export function chapterCorpus(chapter: ChapterBeat, prevTail: string, summariesText: string): string {
+  return [
+    chapter.title, chapter.beat,
+    chapter.pov ?? '', (chapter.characters ?? []).join(' '),
+    chapter.payoffPoint ?? '', chapter.chapterHook ?? '',
+    prevTail, summariesText,
+  ].join('\n');
+}
 
 export function buildSummariesText(
   outline: Outline,
@@ -169,12 +183,7 @@ export function buildChapterContext(args: {
   let style: string | undefined;
   let loreTrace: ChapterContext['loreTrace'] | undefined;
   if (lorebook.length || exemplars.length) {
-    const corpus = [
-      loc.chapter.title, loc.chapter.beat,
-      (loc.chapter.pov ?? ''), (loc.chapter.characters ?? []).join(' '),
-      loc.chapter.payoffPoint ?? '', loc.chapter.chapterHook ?? '',
-      prevTail, summariesText,
-    ].join('\n');
+    const corpus = chapterCorpus(loc.chapter, prevTail, summariesText);
     const runArgs = { order, chapterId, volumeId: vol.id, corpus };
     if (lorebook.length) {
       const { activated, dropped } = activateLore({ ...runArgs, entries: lorebook, budgetChars: LORE_BUDGET_CHARS });

@@ -95,3 +95,77 @@ export function activateLore(args: {
 export function loreBlockText(entries: LoreEntry[]): string {
   return entries.map((e) => `- 【${e.title}】${e.content}`).join('\n');
 }
+
+/* ---------------- 激活解释器（UI 测试器用；判定逻辑与 activateLore 严格同源） ---------------- */
+
+export type LoreVerdict = 'activated' | 'dropped' | 'out-of-scope' | 'disabled' | 'no-hit';
+
+export interface LoreExplainItem {
+  id: string;
+  title: string;
+  chars: number;
+  verdict: LoreVerdict;
+  hitKey?: string;      // no-hit 之外命中用的触发词
+  constant?: boolean;
+  contract?: boolean;
+}
+
+/** 激活测试器的完整回包（B2）：逐条判定 + 预算占用 */
+export interface LoreTestReport { kind: 'lore' | 'style'; used: number; budget: number; items: LoreExplainItem[] }
+
+/**
+ * 逐条解释"为什么注入了/没注入"：先按与 activateLore 相同的顺序与预算规则分出
+ * activated/dropped，再为未候选条目补 out-of-scope/disabled/no-hit 归因。
+ * 章不在阅读序时全部按 out-of-scope 处理（无从定位=全部不生效）。
+ */
+export function explainLoreActivation(args: {
+  entries: LoreEntry[];
+  order: string[];
+  chapterId: string;
+  volumeId?: string;
+  corpus: string;
+  budgetChars: number;
+}): { items: LoreExplainItem[]; used: number; budget: number } {
+  const { entries, order, chapterId, volumeId, budgetChars } = args;
+  const at = order.indexOf(chapterId);
+  const hay = args.corpus.toLowerCase();
+  const firstKey = (e: LoreEntry): string | undefined =>
+    e.keys.map((k) => k.trim().toLowerCase()).find((k) => k && hay.includes(k));
+
+  type Row = { e: LoreEntry; i: number; verdict: LoreVerdict | 'pending'; hitKey?: string };
+  const rows: Row[] = [];
+  const candidates: Row[] = [];
+  entries.forEach((e, i) => {
+    const base = { e, i };
+    if (e.enabled === false) { rows.push({ ...base, verdict: 'disabled' }); return; }
+    if (at < 0 || !loreInScope(e, order, at, volumeId)) { rows.push({ ...base, verdict: 'out-of-scope' }); return; }
+    if (e.constant !== true) {
+      const hk = firstKey(e);
+      if (!hk) { rows.push({ ...base, verdict: 'no-hit' }); return; }
+      const row: Row = { ...base, verdict: 'pending', hitKey: hk };
+      rows.push(row); candidates.push(row);
+      return;
+    }
+    const row: Row = { ...base, verdict: 'pending' };
+    rows.push(row); candidates.push(row);
+  });
+  // 与 activateLore 同款排序 + 预算填充
+  const ranked = candidates
+    .map((r, i) => ({ r, i }))
+    .sort((a, b) => (b.r.e.priority ?? 0) - (a.r.e.priority ?? 0) || a.i - b.i)
+    .map((x) => x.r);
+  let used = 0;
+  for (const r of ranked) {
+    if (r.e.contract) { r.verdict = 'activated'; continue; }
+    if (used + r.e.content.length <= budgetChars) { r.verdict = 'activated'; used += r.e.content.length; }
+    else r.verdict = 'dropped';
+  }
+  const items = rows.map((r) => ({
+    id: r.e.id, title: r.e.title, chars: r.e.content.length,
+    verdict: r.verdict === 'pending' ? ('activated' as LoreVerdict) : r.verdict,
+    ...(r.hitKey ? { hitKey: r.hitKey } : {}),
+    ...(r.e.constant ? { constant: true } : {}),
+    ...(r.e.contract ? { contract: true } : {}),
+  }));
+  return { items, used, budget: budgetChars };
+}
