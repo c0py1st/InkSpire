@@ -54,3 +54,21 @@ export function ensureParagraphIndent(text: string): string {
 export function atParagraphStart(text: string, offset: number): boolean {
   return offset === 0 || text[offset - 1] === '\n';
 }
+
+/**
+ * 通读模式搜索高亮用：找出 query 在 text 中所有不重叠命中区间 [start,end)。
+ * 大小写不敏感（中文经 toLowerCase 恒等，无需分支）；query 含换行/为空返回 []；
+ * 纯 indexOf 扫描，不走 RegExp——任意用户输入无注入/回溯风险。
+ */
+export function findTextRanges(text: string, query: string): Array<[number, number]> {
+  const needle = query.trim().toLowerCase();
+  if (!needle || needle.includes('\n')) return [];
+  const hay = text.toLowerCase();
+  const out: Array<[number, number]> = [];
+  let i = hay.indexOf(needle);
+  while (i >= 0) {
+    out.push([i, i + needle.length]);
+    i = hay.indexOf(needle, i + needle.length);
+  }
+  return out;
+}

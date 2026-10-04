@@ -29,6 +29,16 @@ projectRouter.get('/:slug/bundle', (req, res) => {  try {
   }
 });
 
+/** 通读模式正文：全部章节按章序连排下发（只读视图，零模型调用；章 id 零填充，字典序即阅读序） */
+projectRouter.get('/:slug/read-through', (req, res) => {
+  try {
+    const chapters = listChapters(req.params.slug);
+    res.json(chapters.map((c) => ({ id: c.id, title: c.title, content: c.content })));
+  } catch (err) {
+    res.status(404).json({ error: (err as Error).message });
+  }
+});
+
 /** 作品级开关：白名单只收 webnovelMode（网文模式），其余 meta 字段不可经此改 */
 projectRouter.put('/:slug/meta', (req, res) => {
   try {

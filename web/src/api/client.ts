@@ -161,6 +161,9 @@ export const api = {
     put<{ ok: true; entries: LoreEntry[] }>(`/api/projects/${slug}/lorebook`, entries),
   getLoreTrace: (slug: string) => get<Record<string, LoreTraceEntry>>(`/api/projects/${slug}/lorebook/trace`),
 
+  /** 通读模式：全部章节正文按阅读序一次下发（只读） */
+  readThrough: (slug: string) => get<Array<{ id: string; title: string; content: string }>>(`/api/projects/${slug}/read-through`),
+
   // 流式任务
   wizardKernel: (ideaPrompt: string, scale: { volumeCount: number; chaptersPerVolume: number; wordsPerChapter: number }, onDelta: (t: string) => void) =>
     sse<{ kernel: Kernel }>('/api/wizard/kernel', { ideaPrompt, scale }, onDelta),

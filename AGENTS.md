@@ -40,6 +40,8 @@
     常驻/契约条豁免预算/优先级整条进出）+prosePrompt 注入+`.index/lore-activated.json` 留痕+设定集编辑器
   - [拍板 2026-10-04] 下一批按序：A1 read_lorebook → B1 通读模式 → A2 风格范文库 → B2 世界书 UI 增强 → C1 Tauri 打包（需另议"零依赖"破例）
   - [完成] A1 对话 agent 的 read_lorebook 工具：世界书进 ReAct 查询链（keyword/章生效范围过滤，含停用与契约标注）
+  - [完成] B1 通读模式：GET /:slug/read-through 只读连排 + 前端全书搜索高亮（findTextRanges 纯函数+单测）
+    逐处跳转（Enter/Shift+Enter）+ 章题跳编辑器 + IntersectionObserver 分块懒加载（浏览器实测 9 处命中跳转）
   - 每阶段独立提交、过全量门禁；推送等作者说"推送"
 
 ## 记忆分层同构提示
