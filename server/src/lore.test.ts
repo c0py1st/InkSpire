@@ -9,7 +9,7 @@ import { prosePrompt } from './ai/prompts/prose';
 
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'moge-lore-'));
 process.env.MOGE_DATA_DIR = tmp;
-const { sanitizeLoreEntries, saveLoreActivated, loadLoreActivated } = await import('./fs-store');
+const { sanitizeLoreEntries, sanitizeStyleExemplars, saveLoreActivated, loadLoreActivated } = await import('./fs-store');
 
 const E = (over: Partial<LoreEntry> & { id: string }): LoreEntry => ({
   title: over.title ?? over.id, keys: over.keys ?? [], content: over.content ?? '内容', ...over,
@@ -154,5 +154,28 @@ describe('生成路径挂接（buildChapterContext + prosePrompt）', () => {
   it('constant 常驻条不依赖 beat 也进 prompt', () => {
     const ctx = buildChapterContext({ ...common, chapterId: 'v01c002', lorebook: [E({ id: 'c', title: '世界铁律', keys: [], content: '此界不可有枪械', constant: true })] });
     expect(ctx.lore).toContain('此界不可有枪械');
+  });
+});
+
+describe('风格范文消毒（A2a）', () => {
+  it('白名单收敛：脏条丢弃、非法章 id 只丢字段、布尔与长度全部钳制', () => {
+    const clean = sanitizeStyleExemplars([
+      { id: ' x ', title: '《第一章》·氛围', content: ' 夜色如浸水的绒布。 ', keys: ['夜色', '', 7, '雨'.repeat(60), 'a', 'b', 'c', 'd', 'e'], sceneTag: '氛围', sourceChapterId: 'v01c001', sourceChapterTitle: '第一章', constant: true, enabled: false, at: '2026-01-01', junk: 1 },
+      { id: '', title: 't', content: 'c' },                 // 无 id → 丢
+      { id: 'b', title: '  ', content: 'c' },                // 空标题 → 丢
+      { id: 'c', title: 't', content: ' ' },                 // 空正文 → 丢
+      { id: 'd', title: 't', content: 'c', sourceChapterId: '坏id', constant: 'yes', enabled: 'no' },
+      'str', null, [],
+    ]);
+    expect(clean).toHaveLength(2);
+    expect(clean[0]).toEqual({
+      id: 'x', title: '《第一章》·氛围', keys: ['夜色', '雨'.repeat(40), 'a', 'b', 'c'], content: '夜色如浸水的绒布。',
+      sceneTag: '氛围', sourceChapterId: 'v01c001', sourceChapterTitle: '第一章',
+      constant: true, enabled: false, at: '2026-01-01',
+    });
+    // d：非法章 id / 非 true 布尔 → 字段整体不收，条目本体保留
+    expect(clean[1]).toEqual({ id: 'd', title: 't', keys: [], content: 'c', at: clean[1].at });
+    expect(sanitizeStyleExemplars({ nope: 1 })).toEqual([]);
+    expect(sanitizeStyleExemplars(null)).toEqual([]);
   });
 });

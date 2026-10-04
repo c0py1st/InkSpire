@@ -1023,6 +1023,14 @@ aiRouter.post('/projects/:slug/review/:chapterId', async (req, res) => {
     if (!report) return res.status(502).json({ error: '评审返回结构不可用，请重试' });
     // 引证验真：每条 grievance 的 quote 落地到本章正文（与一致性检查同一口径）
     for (const p of report.personas) for (const g of p.grievances) g.verified = verifyQuote(g.quote, content);
+    // A2：范文候选验真——编造的"原文"不配进范文库，未逐字命中的直接丢弃
+    if (report.highlights?.length) {
+      report.highlights = report.highlights.flatMap((h) => {
+        const v = verifyQuote(h.excerpt, content);
+        return v ? [{ ...h, verified: v }] : [];
+      });
+      if (!report.highlights.length) delete report.highlights;
+    }
     res.json({ report });
   } catch (err) {
     res.status(500).json({ error: (err as Error).message });

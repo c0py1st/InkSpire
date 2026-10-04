@@ -1,4 +1,4 @@
-import type { GoldenChapter, GoldenThreeReview, ReaderReview } from '../../../../shared/src/types';
+import type { GoldenChapter, GoldenThreeReview, ReaderReview, ReviewHighlight } from '../../../../shared/src/types';
 import { ASSISTANT_BASE, JSON_ONLY } from './common';
 
 /**
@@ -46,13 +46,17 @@ ${authorTargets ? authorTargets + '\n\n' : ''}评分纪律：
 - 每条 grievance 必须带 quote（从正文【原样摘录】的一处短句，作为证据，不许改写或凭空编造）与 issue（一句话说明读者的真实感受）。
 - 抱怨要具体到"哪句/哪段让人怎样"，不要空泛说"节奏一般"。
 - 最后给 verdict（一句话总评）与 topFixes（按影响大小排序、最多 3 条可执行的修改建议）。
+- highlights：挑出本章最值得后来章节模仿的文字（0~3 段，宁缺毋滥——写得平庸就给空数组）。
+  每段 excerpt 必须从正文【逐字原样摘录】一整句到一小段（30~300 字，服务端会逐字验真，编造即弃）；
+  keys 给 2~5 个场景触发词（这类文字适合在什么场面被想起来用，如"雨夜""对峙""心理独白"）；sceneTag 一个词归类。
 
 【本章《${args.chapterTitle}》正文】
 ${args.content}
 
 输出 JSON（${JSON_ONLY}）：
-{ "personas": [ { "name": "读者身份", "overall": 6, "wouldContinue": true, "praise": "…", "grievances": [ { "quote": "正文原句", "issue": "读者感受" } ] } ], "verdict": "…", "topFixes": ["…"] }
-（personas 恰好三条，顺序与上面三类读者一致）`,
+{ "personas": [ { "name": "读者身份", "overall": 6, "wouldContinue": true, "praise": "…", "grievances": [ { "quote": "正文原句", "issue": "读者感受" } ] } ], "verdict": "…", "topFixes": ["…"],
+  "highlights": [ { "excerpt": "正文原样摘录", "keys": ["触发词1", "触发词2"], "sceneTag": "…" } ] }
+（personas 恰好三条，顺序与上面三类读者一致；highlights 可为空数组）`,
   };
 }
 
@@ -84,10 +88,25 @@ export function normalizeReaderReview(raw: unknown): ReaderReview | null {
     }];
   });
   if (personasOut.length === 0) return null;
+  // A2：highlights 缺省不出现（旧契约逐字节不变）；脏条目丢弃不毁整份评审，"先滤脏再截 3"——脏条目不占名额
+  const highlights: ReviewHighlight[] = (Array.isArray(o.highlights) ? o.highlights : []).flatMap((h) => {
+        if (!h || typeof h !== 'object' || Array.isArray(h)) return [];
+        const x = h as Record<string, unknown>;
+        if (typeof x.excerpt !== 'string' || !x.excerpt.trim()) return [];
+        const keys = Array.isArray(x.keys)
+          ? x.keys.filter((k): k is string => typeof k === 'string' && !!k.trim()).map((k) => k.trim().slice(0, 40)).slice(0, 5)
+          : [];
+        return [{
+          excerpt: x.excerpt.trim().slice(0, 600),
+          keys,
+          ...(typeof x.sceneTag === 'string' && x.sceneTag.trim() ? { sceneTag: x.sceneTag.trim().slice(0, 20) } : {}),
+        }];
+  }).slice(0, 3);
   return {
     personas: personasOut,
     verdict: typeof o.verdict === 'string' ? o.verdict.slice(0, 200) : '',
     topFixes: Array.isArray(o.topFixes) ? o.topFixes.filter((s): s is string => typeof s === 'string').slice(0, 3).map((s) => s.slice(0, 200)) : [],
+    ...(highlights.length ? { highlights } : {}),
   };
 }
 

@@ -138,6 +138,11 @@ export function yieldMockJson(promptHint: string): string {
     });
   }
   if (promptHint.includes('三类目标读者') || promptHint.includes('读者身份')) {
+    // A2：从送审正文里摘一句真话当范文候选（演示模式也能走通"验真→收录"链路；
+    // 真引文保证 verifyQuote 命中，评审面板不再空转）
+    const bodyAt = promptHint.indexOf('【本章');
+    const body = bodyAt >= 0 ? promptHint.slice(bodyAt) : promptHint;
+    const quoted = (body.match(/[^\n“"]{20,80}[。！？]/) ?? [''])[0].trim();
     return JSON.stringify({
       personas: [
         { name: '读者一', overall: 7, wouldContinue: true, praise: '验尸一段的冷细节立住了主角的专业感。',
@@ -149,6 +154,7 @@ export function yieldMockJson(promptHint: string): string {
       ],
       verdict: '骨架能读下去，但三处小断裂累积起来正在消耗信任。',
       topFixes: ['收勘合前补一笔为何携带', '雪光改写成与上一章不同的质感', '师父插叙改为被眼前事物勾起'],
+      ...(quoted ? { highlights: [{ excerpt: quoted, keys: ['夜色', '细节'], sceneTag: '氛围' }] } : {}),
     });
   }
   // 默认：故事内核（"提炼成一份故事内核"是最靠前的步骤）

@@ -435,6 +435,37 @@ export interface ReaderReview {
   personas: ReviewPersona[];
   verdict: string;              // 一句话总评
   topFixes: string[];           // ≤3 条按影响排序的可执行修改
+  highlights?: ReviewHighlight[];  // 评审顺带挑出的"值得模仿"段落（A2 提取入口；缺省 = 旧结构不变）
+}
+
+/**
+ * 评审挑出的风格范文候选（A2）：excerpt 必须逐字摘自本章正文，
+ * 服务端 verifyQuote 验真——未通过的直接丢弃，范文库不收模型编造的"原文"。
+ * keys 是场景触发词（与 F 世界书同语义），供写同类场景的章时命中注入。
+ */
+export interface ReviewHighlight {
+  excerpt: string;
+  keys: string[];
+  sceneTag?: string;            // 场景归类自由文本（打斗/对话/环境/心理…）
+  verified?: 'exact' | 'loose'; // 验真通过的口径（未通过的根本不出现）
+}
+
+/**
+ * 风格范文库的一条（data/<书>/exemplars.json，真相源、数组形）：
+ * 本书已被读者验证过的好段落，写章时按触发词命中注入 prompt 作笔法样本。
+ * 字段与 LoreEntry 结构兼容（title/keys/content/constant/enabled），注入复用 activateLore。
+ */
+export interface StyleExemplar {
+  id: string;
+  title: string;                // 展示名（收录时自动生成「《章题》·场景标签」）
+  content: string;              // 范文正文（逐字验真的原文摘录）
+  keys: string[];               // 触发词——与 F 同语义（子串命中章级语料）
+  sceneTag?: string;
+  sourceChapterId?: string;
+  sourceChapterTitle?: string;
+  constant?: boolean;           // 常驻：每章都注入（吃范文预算）
+  enabled?: boolean;            // 缺省 true
+  at: string;
 }
 
 /* ---------------- 黄金三章评审（E4） ---------------- */

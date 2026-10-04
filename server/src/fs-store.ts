@@ -3,7 +3,7 @@ import path from 'node:path';
 import YAML from 'yaml';
 import {
   Bundle, ChapterFile, ChapterStatus, CharacterCard, ChatMessageRecord, ChatProposalRecord, ChatStepRecord,
-  Foreshadow, LoreEntry, LoreTraceEntry, LoreTraceItem, Outline, ProjectMeta, StoryEvent, Suggestion, VolumeRecap,
+  Foreshadow, LoreEntry, LoreTraceEntry, LoreTraceItem, Outline, ProjectMeta, StoryEvent, StyleExemplar, Suggestion, VolumeRecap,
 } from '../../shared/src/types';
 import { countChars } from '../../shared/src/util';
 import { DATA_DIR } from './config';
@@ -375,6 +375,48 @@ export function saveLoreActivated(slug: string, chapterId: string, activated: Lo
 
 export function loadLoreActivated(slug: string): Record<string, LoreTraceEntry> {
   return (readJson<Record<string, unknown>>(indexFile(slug, 'lore-activated.json'), {}) ?? {}) as Record<string, LoreTraceEntry>;
+}
+
+/* ---------------- 风格范文库（exemplars.json，真相源） ---------------- */
+
+const EXEMPLAR_MAX = 100;
+
+/** 白名单消毒：脏条目整条丢弃不丢全档（同 lorebook 纪律） */
+export function sanitizeStyleExemplars(input: unknown): StyleExemplar[] {
+  if (!Array.isArray(input)) return [];
+  const out: StyleExemplar[] = [];
+  for (const e of input.slice(0, EXEMPLAR_MAX)) {
+    if (!e || typeof e !== 'object' || Array.isArray(e)) continue;
+    const x = e as Record<string, unknown>;
+    if (typeof x.id !== 'string' || !x.id.trim()) continue;
+    if (typeof x.title !== 'string' || !x.title.trim()) continue;
+    if (typeof x.content !== 'string' || !x.content.trim()) continue;
+    const keys = Array.isArray(x.keys)
+      ? x.keys.filter((k): k is string => typeof k === 'string' && !!k.trim()).map((k) => k.trim().slice(0, 40)).slice(0, 5)
+      : [];
+    const ex: StyleExemplar = {
+      id: x.id.trim().slice(0, 40),
+      title: x.title.trim().slice(0, 80),
+      keys,
+      content: x.content.trim().slice(0, 600),
+      at: typeof x.at === 'string' ? x.at.slice(0, 40) : new Date().toISOString(),
+    };
+    if (typeof x.sceneTag === 'string' && x.sceneTag.trim()) ex.sceneTag = x.sceneTag.trim().slice(0, 20);
+    if (typeof x.sourceChapterId === 'string' && CHAPTER_ID_RE.test(x.sourceChapterId.trim())) ex.sourceChapterId = x.sourceChapterId.trim();
+    if (typeof x.sourceChapterTitle === 'string' && x.sourceChapterTitle.trim()) ex.sourceChapterTitle = x.sourceChapterTitle.trim().slice(0, 60);
+    if (x.constant === true) ex.constant = true;
+    if (x.enabled === false) ex.enabled = false;
+    out.push(ex);
+  }
+  return out;
+}
+
+export function loadExemplars(slug: string): StyleExemplar[] {
+  return sanitizeStyleExemplars(readJson<unknown>(jfile(slug, 'exemplars.json'), []));
+}
+
+export function saveExemplars(slug: string, items: StyleExemplar[]): void {
+  writeJson(jfile(slug, 'exemplars.json'), items);
 }
 
 /* ---------------- 对话持久化（chat.json） ---------------- */

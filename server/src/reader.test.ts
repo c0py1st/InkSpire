@@ -73,6 +73,31 @@ describe('normalizeReaderReview', () => {
     ] });
     expect(r!.personas[0].grievances).toHaveLength(1);
   });
+
+  it('A2 highlights：解析+裁剪；缺省不出现字段（旧契约不变）；脏条目丢弃', () => {
+    const withH = normalizeReaderReview({ ...good, highlights: [
+      { excerpt: ' 夜色像浸了水的绒布。', keys: ['夜色', '  ', 7, '雨'.repeat(60)], sceneTag: ' 氛围 ' },
+      { excerpt: '   ' },                       // 空引文 → 丢
+      'string', null,
+      { excerpt: 'e'.repeat(900), keys: 'nope' },
+    ] });
+    expect(withH!.highlights).toHaveLength(2);
+    expect(withH!.highlights![0].excerpt).toBe('夜色像浸了水的绒布。');
+    expect(withH!.highlights![0].keys).toEqual(['夜色', '雨'.repeat(40).slice(0, 40)]);   // 非字符串丢、超长裁
+    expect(withH!.highlights![0].sceneTag).toBe('氛围');
+    expect(withH!.highlights![1].keys).toEqual([]);
+    expect(normalizeReaderReview(good)!.highlights).toBeUndefined();
+    // 超 3 段截断
+    const many = normalizeReaderReview({ ...good, highlights: Array.from({ length: 5 }, (_, i) => ({ excerpt: `句${i}`, keys: [] })) });
+    expect(many!.highlights).toHaveLength(3);
+  });
+
+  it('A2 评审 prompt 契约：要求 highlights 且声明逐字验真', () => {
+    const u = readerReviewPrompt({ chapterTitle: '题', content: '正文', webnovel: false }).user;
+    expect(u).toContain('"highlights"');
+    expect(u).toContain('逐字原样摘录');
+    expect(u).toContain('宁缺毋滥');
+  });
 });
 
 /* ---------------- E4 黄金三章 ---------------- */
