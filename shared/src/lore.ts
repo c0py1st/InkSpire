@@ -27,8 +27,8 @@ export function loreKeyHit(entry: LoreEntry, corpusLower: string): boolean {
   return false;
 }
 
-/** scope 的章区间判定（含端点，按阅读序下标）。未知边界 id 视为该侧开放（宽容降级）。 */
-function inScope(entry: LoreEntry, order: string[], at: number, volumeId?: string): boolean {
+/** scope 的章区间判定（含端点，按阅读序下标）。未知边界 id 视为该侧开放（宽容降级）。导出供 agent 工具复用同一语义。 */
+export function loreInScope(entry: LoreEntry, order: string[], at: number, volumeId?: string): boolean {
   const sc = entry.scope;
   if (!sc) return true;
   if (sc.volumeId && volumeId !== sc.volumeId) return false;
@@ -65,7 +65,7 @@ export function activateLore(args: {
   const hits: LoreEntry[] = [];
   for (const e of entries) {
     if (e.enabled === false) continue;
-    if (!inScope(e, order, at, volumeId)) continue;
+    if (!loreInScope(e, order, at, volumeId)) continue;
     if (e.constant !== true && !loreKeyHit(e, hay)) continue;
     hits.push(e);
   }

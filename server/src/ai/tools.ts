@@ -1,9 +1,10 @@
-import type { Foreshadow, ToolCall, ToolSpec } from '../../../shared/src/types';
+import type { Foreshadow, LoreEntry, ToolCall, ToolSpec } from '../../../shared/src/types';
+import { loreInScope } from '../../../shared/src/lore';
 import {
-  loadCharacters, loadEvents, loadForeshadows, loadOutline, readChapter, saveForeshadows,
+  loadCharacters, loadEvents, loadForeshadows, loadLorebook, loadOutline, readChapter, saveForeshadows,
 } from '../fs-store';
 import { searchChapters } from '../chapter-index';
-import { locateChapter } from './memory';
+import { flattenChapterIds, locateChapter } from './memory';
 
 /**
  * Agent 工具层：schema 定义 + 权限策略 + 参数校验 + 执行器。
@@ -22,6 +23,7 @@ export const TOOL_POLICIES: Record<string, ToolPolicy> = {
   read_character_card: 'execute',
   read_foreshadow_list: 'execute',
   read_timeline: 'execute',
+  read_lorebook: 'execute',
   read_chapter: 'execute',
   register_foreshadow: 'execute',
   propose_chapter_content: 'propose',
@@ -63,6 +65,20 @@ export const TOOL_SPECS: ToolSpec[] = [
         properties: {
           actor: { type: 'string', description: '可选：只保留参与人物/势力名包含该词的事件' },
           uptoChapter: { type: 'string', description: '可选：只列到这一章为止（含），形如 v01c003' },
+        },
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'read_lorebook',
+      description: '读取世界书（按需激活的设定条目：触发词→设定正文，含生效范围/常驻/契约/优先级/启用状态）。回答"关于 X 的设定/规则/体系/势力""某章生成时世界书会注入哪些条目"类问题时使用。可用 keyword 按条名/触发词/正文过滤；给 chapterId 则只列对该章生效（scope 范围内）的条目。',
+      parameters: {
+        type: 'object',
+        properties: {
+          keyword: { type: 'string', description: '可选：按条名/触发词/设定正文子串过滤' },
+          chapterId: { type: 'string', description: '可选：只看对这一章生效的条目，形如 v01c003' },
         },
       },
     },
@@ -253,6 +269,46 @@ export function executeTool(slug: string, call: ToolCall): ToolOutcome {
         .map((e) => `- ${e.chapterId}《${chTitle(e.chapterId)}》${e.whenInStory ? `【${e.whenInStory}】` : ''} ${e.title}${e.actors?.length ? `（${e.actors.join('、')}）` : ''}${e.source === 'manual' ? '[作者补记]' : ''}`)
         .join('\n');
       return { ok: true, content: cap(text), detail: `读时间线 → ${items.length}/${all.length} 条` };
+    }
+    case 'read_lorebook': {
+      const keyword = str(args.keyword, 30);
+      const cid = str(args.chapterId, 10);
+      if (cid && !knownChapter(slug, cid)) return fail(`chapterId「${cid}」不在大纲中（形如 v01c003）`);
+      const entries = loadLorebook(slug);
+      if (!entries.length) {
+        return { ok: true, content: '本书还没有世界书条目（设定集页可添加：触发词→设定内容，写章时命中才注入）。', detail: '读世界书 → 空' };
+      }
+      let items: LoreEntry[] = entries;
+      if (keyword) {
+        const q = keyword.toLowerCase();
+        items = items.filter((e) => e.title.toLowerCase().includes(q) || e.content.toLowerCase().includes(q) || e.keys.some((k) => k.toLowerCase().includes(q)));
+      }
+      let scopeNote = '';
+      if (cid) {
+        const outline = loadOutline(slug)!;
+        const order = flattenChapterIds(outline);
+        const volId = locateChapter(outline, cid).volume.id;
+        items = items.filter((e) => loreInScope(e, order, order.indexOf(cid), volId));
+        scopeNote = `（按对 ${cid} 的生效范围过滤；触发词是否命中取决于该章实际语料）`;
+      }
+      if (!items.length) {
+        return { ok: true, content: keyword ? `世界书里没有涉及「${keyword}」的条目（全表 ${entries.length} 条）。` : `没有对该章生效的世界书条目（全表 ${entries.length} 条）。`, detail: `读世界书 → 0/${entries.length} 条` };
+      }
+      const text = items.map((e) => {
+        const flags = [
+          e.constant ? '常驻' : '', e.contract ? '契约·豁免预算' : '', e.enabled === false ? '已停用' : '',
+          typeof e.priority === 'number' && e.priority !== 0 ? `优先级${e.priority}` : '',
+        ].filter(Boolean).join('/');
+        const scope = e.scope
+          ? `范围:${e.scope.volumeId ? `卷${e.scope.volumeId}` : ''}${e.scope.chapterFrom ? ` ${e.scope.chapterFrom}起` : ''}${e.scope.chapterTo ? ` 至${e.scope.chapterTo}` : ''}`
+          : '范围:全书';
+        return `- 【${e.title}】触发词:${e.keys.join('/') || '（无，仅靠常驻）'}｜${scope}${flags ? `｜${flags}` : ''}\n  ${e.content}`;
+      }).join('\n');
+      return {
+        ok: true,
+        content: cap(`${scopeNote}\n${text}`.trim()),
+        detail: `读世界书 → ${items.length}/${entries.length} 条`,
+      };
     }
     case 'read_chapter': {
       const cid = str(args.chapterId, 10) ?? '';

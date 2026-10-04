@@ -32,6 +32,13 @@ beforeAll(() => {
     { id: 'e1', chapterId: 'v01c001', title: '盐仓失火', actors: ['李慎', '周主簿'], whenInStory: '雪夜', source: 'auto', at: '' },
     { id: 'e2', chapterId: 'v01c002', title: '获得提刑司勘合', actors: ['李慎'], source: 'manual', at: '' },
   ]));
+  fs.writeFileSync(path.join(dir, 'lorebook.json'), JSON.stringify([
+    { id: 'l1', title: '铃医门规', keys: ['铃医', '铜铃'], content: '佩铜铃者夜行市集可免勘合' },
+    { id: 'l2', title: '盐仓案余波', keys: ['盐仓'], content: '盐仓封栈查办', priority: 3 },
+    { id: 'l3', title: '勘合制度', keys: ['勘合', '过所'], content: '行走千里皆需勘合', constant: true },
+    { id: 'l4', title: '南派背景', keys: ['铃铛'], content: '南派自第二章起浮现', scope: { chapterFrom: 'v01c002' } },
+    { id: 'l5', title: '停尸房规矩', keys: ['停尸房'], content: '夜入停尸房须二人同值', enabled: false },
+  ]));
 });
 
 describe('工具注册表', () => {
@@ -130,5 +137,37 @@ describe('executeTool 校验与行为', () => {
     expect(upto.content).not.toContain('获得提刑司勘合');
 
     expect(executeTool(SLUG, call('read_timeline', { uptoChapter: '乱码' })).ok).toBe(false);
+  });
+});
+
+describe('read_lorebook', () => {
+  it('keyword 过滤（命中条名/触发词/正文）；detail 计数', () => {
+    const r = executeTool(SLUG, call('read_lorebook', { keyword: '铜铃' }));
+    expect(r.ok).toBe(true);
+    expect(r.content).toContain('铃医门规');
+    expect(r.content).not.toContain('勘合制度');
+    expect(r.detail).toContain('1/5');
+  });
+
+  it('constant 条即使无 keyword 也列出，标注常驻', () => {
+    const r = executeTool(SLUG, call('read_lorebook', {}));
+    expect(r.content).toContain('勘合制度');
+    expect(r.content).toContain('常驻');
+  });
+
+  it('停用条保留但标注「已停用」', () => {
+    const r = executeTool(SLUG, call('read_lorebook', { keyword: '停尸房' }));
+    expect(r.content).toContain('已停用');
+  });
+
+  it('chapterId 按 scope 过滤：c001 看不到 v01c002 起的条', () => {
+    const c1 = executeTool(SLUG, call('read_lorebook', { chapterId: 'v01c001' }));
+    expect(c1.content).not.toContain('南派背景');
+    const c2 = executeTool(SLUG, call('read_lorebook', { chapterId: 'v01c002' }));
+    expect(c2.content).toContain('南派背景');
+  });
+
+  it('非法 chapterId 拒绝', () => {
+    expect(executeTool(SLUG, call('read_lorebook', { chapterId: '乱码章' })).ok).toBe(false);
   });
 });

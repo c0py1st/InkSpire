@@ -38,7 +38,8 @@
     / E3 节奏红线(44e4836) / E2 读者评审(c4ffb52) / E4 黄金三章(4d709a3)+两 bug 修复(89ea06d)
   - [完成] F Lorebook-lite 世界书：lorebook.json 真相源+命中激活（触发词子串/scope 卷段章段/
     常驻/契约条豁免预算/优先级整条进出）+prosePrompt 注入+`.index/lore-activated.json` 留痕+设定集编辑器
-  - [下一站] 待作者拍板：通读模式（全书连读+搜索高亮）/ Tauri 桌面打包 / 对话 agent 世界书工具（read_lorebook）
+  - [拍板 2026-10-04] 下一批按序：A1 read_lorebook → B1 通读模式 → A2 风格范文库 → B2 世界书 UI 增强 → C1 Tauri 打包（需另议"零依赖"破例）
+  - [完成] A1 对话 agent 的 read_lorebook 工具：世界书进 ReAct 查询链（keyword/章生效范围过滤，含停用与契约标注）
   - 每阶段独立提交、过全量门禁；推送等作者说"推送"
 
 ## 记忆分层同构提示
