@@ -15,7 +15,11 @@ export interface ChapterContext {
   mentionOnly: CharacterCard[];  // 其他主要人物一句话版
   recentHooks?: Array<{ chapter: string; hook: string }>;  // 前文已用章末钩子（去重用；网文模式才有值）
   lore?: string;                 // 世界书本章激活块文本（命中才出现；缺省 = 逐字节旧行为）
-  loreTrace?: { activated: LoreEntry[]; dropped: LoreEntry[] };  // 供生成路径落 .index 留痕，不进 prompt
+  style?: string;                // 风格范文本章激活块文本（A2；命中才出现，缺省同上）
+  loreTrace?: {
+    activated: LoreEntry[]; dropped: LoreEntry[];
+    styleActivated?: LoreEntry[]; styleDropped?: LoreEntry[];
+  };                             // 供生成路径落 .index 留痕，不进 prompt
 }
 
 /** 逐章正文的生成提示词。这是"严格按大纲"的核心环节。 */
@@ -49,6 +53,8 @@ ${[
         .map((c) => `${c.name}（${c.role}）：性格 ${c.personality}；背景 ${c.background}；关系 ${c.relations}${c.speechHabit ? `；说话 ${c.speechHabit}` : ''}${c.state ? `；状态 ${c.state}` : ''}`)
         .join('\n')}`
     : '',
+  // 风格范文（A2）：验真过的本书好段落做笔法样本；放结尾原文前=离生成点最近的示范位
+  ctx.style ? `【风格范文（只模仿笔法、句长、节奏——严禁复用其情节、人名、对白内容）】\n${ctx.style}` : '',
   ctx.prevTail ? `【上一章结尾原文】（承接其场景、语气与未收的钩子）\n…${ctx.prevTail}` : '',
   `【本章硬约束】第 ${ctx.chapter.title} 章（POV：${ctx.chapter.pov ?? '自由'}）\n${ctx.chapter.beat}`,
   nextBeats ? `【后续章节走向（写作时可埋钩子，但不要提前展开）】\n${nextBeats}` : '',

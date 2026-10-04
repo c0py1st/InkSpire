@@ -19,7 +19,7 @@ import { chatPrompt } from '../ai/prompts/chat';
 import { summaryPrompt } from '../ai/prompts/summary';
 import { consistencyPrompt } from '../ai/prompts/consistency';
 import {
-  getMeta, listChapters, loadBundle, loadEvents, loadLorebook, loadOutline, loadRecaps, loadSummaries, loadSuggestions, mergeChapterAutoEvents, readChapter,
+  getMeta, listChapters, loadBundle, loadEvents, loadExemplars, loadLorebook, loadOutline, loadRecaps, loadSummaries, loadSuggestions, mergeChapterAutoEvents, readChapter,
   saveChapterBody, saveEvents, saveLoreActivated, saveOutline, saveRecaps, saveSuggestions, saveSummaries,
 } from '../fs-store';
 import { recapFingerprint, stateAtChapter } from '../../../shared/src/types';
@@ -252,9 +252,10 @@ async function runOneChapter(task: BgGenTask, item: QueueItem): Promise<ChapterR
       prevChapterContent: prevContent,
       foreshadows: bundle.foreshadows,
       lorebook: loadLorebook(slug),
+      exemplars: loadExemplars(slug),
     });
     if (ctx.loreTrace) {
-      saveLoreActivated(slug, chapterId, ctx.loreTrace.activated, ctx.loreTrace.dropped);
+      saveLoreActivated(slug, chapterId, ctx.loreTrace);
     }
 
     const targetWords = getMeta(slug).wordsPerChapter ?? undefined;

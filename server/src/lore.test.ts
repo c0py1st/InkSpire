@@ -109,13 +109,20 @@ describe('世界书消毒（落盘/前端输入绝不信任）', () => {
 });
 
 describe('激活留痕缓存', () => {
-  it('按章覆盖写；只留 id/标题/字数', () => {
-    saveLoreActivated('测试留痕', 'v01c001', [E({ id: 'a', title: '甲', content: 'xxx' })], []);
-    saveLoreActivated('测试留痕', 'v01c001', [E({ id: 'a', title: '甲', content: 'yyy' })], [E({ id: 'b', title: '乙', content: 'zz' })]);
+  it('按章覆盖写；只留 id/标题/字数；style 段可选并入', () => {
+    saveLoreActivated('测试留痕', 'v01c001', { activated: [E({ id: 'a', title: '甲', content: 'xxx' })], dropped: [] });
+    saveLoreActivated('测试留痕', 'v01c001', {
+      activated: [E({ id: 'a', title: '甲', content: 'yyy' })],
+      dropped: [E({ id: 'b', title: '乙', content: 'zz' })],
+      styleActivated: [E({ id: 's1', title: '范文一', content: 'qqqq' })],
+      styleDropped: [E({ id: 's2', title: '范文二', content: 'w' })],
+    });
     const all = loadLoreActivated('测试留痕');
     expect(Object.keys(all)).toEqual(['v01c001']);
     expect(all.v01c001.activated).toEqual([{ id: 'a', title: '甲', chars: 3 }]);
     expect(all.v01c001.dropped).toEqual([{ id: 'b', title: '乙', chars: 2 }]);
+    expect(all.v01c001.styleActivated).toEqual([{ id: 's1', title: '范文一', chars: 4 }]);
+    expect(all.v01c001.styleDropped).toEqual([{ id: 's2', title: '范文二', chars: 1 }]);
     fs.rmSync(tmp, { recursive: true, force: true });
   });
 });
@@ -177,5 +184,63 @@ describe('风格范文消毒（A2a）', () => {
     expect(clean[1]).toEqual({ id: 'd', title: 't', keys: [], content: 'c', at: clean[1].at });
     expect(sanitizeStyleExemplars({ nope: 1 })).toEqual([]);
     expect(sanitizeStyleExemplars(null)).toEqual([]);
+  });
+});
+
+describe('A2b 风格范文注入挂接', () => {
+  const o2: Outline = {
+    premise: 'p', genre: 'g', coreConflict: 'c', endingVision: 'e', styleGuide: 's',
+    volumes: [{
+      id: 'v01', title: '卷一', summary: '弧',
+      chapters: [
+        { id: 'v01c001', title: '雪夜', beat: '李慎雪夜验尸', status: 'todo' },
+        { id: 'v01c002', title: '对峙', beat: '公堂对峙', status: 'todo' },
+      ],
+    }],
+  };
+  const EX = (over: { id: string; keys: string[]; content: string; constant?: boolean; enabled?: boolean }) => ({
+    title: over.id, at: '', ...over,
+  });
+  const common2 = { outline: o2, chapterId: 'v01c001', characters: [], worldview: 'w', summaries: {} };
+
+  it('命中范文 → ctx.style + prompt 块 + trace.styleActivated；含"严禁复用情节"告诫', () => {
+    const ctx = buildChapterContext({ ...common2, exemplars: [EX({ id: 'x1', keys: ['雪夜', '验尸'], content: '雪粒打在窗纸上，沙沙地响。' })] });
+    expect(ctx.style).toContain('雪粒打在窗纸上');
+    expect(ctx.loreTrace?.styleActivated?.map((e) => e.id)).toEqual(['x1']);
+    const user = prosePrompt(ctx).user;
+    expect(user).toContain('【风格范文');
+    expect(user).toContain('严禁复用其情节');
+  });
+
+  it('未命中/停用 → 不出块；exemplars 空数组与不传逐字节一致', () => {
+    const bare = prosePrompt(buildChapterContext(common2)).user;
+    const miss = prosePrompt(buildChapterContext({ ...common2, exemplars: [EX({ id: 'm', keys: ['绝不可能xyz'], content: 'zzz' })] })).user;
+    const empty = prosePrompt(buildChapterContext({ ...common2, exemplars: [] })).user;
+    expect(miss).toBe(bare);
+    expect(empty).toBe(bare);
+    expect(miss).not.toContain('【风格范文');
+    const off = buildChapterContext({ ...common2, exemplars: [EX({ id: 'off', keys: ['雪夜'], content: 'x', enabled: false })] });
+    expect(off.style).toBeUndefined();
+  });
+
+  it('预算独立：范文超 STYLE 预算被挤掉，不影响同 key 命中的 lorebook 条', () => {
+    const big = '胖'.repeat(1600);   // >1500 范文预算
+    const ctx = buildChapterContext({
+      ...common2,
+      lorebook: [E({ id: 'k', title: '仵作规制', keys: ['验尸'], content: '验尸须二人同值' })],
+      exemplars: [EX({ id: 'xbig', keys: ['验尸'], content: big })],
+    });
+    expect(ctx.lore).toContain('验尸须二人同值');          // lorebook 正常注入
+    expect(ctx.style).toBeUndefined();                      // 范文超预算整条出局
+    expect(ctx.loreTrace?.styleDropped?.map((e) => e.id)).toEqual(['xbig']);
+    expect(ctx.loreTrace?.activated?.map((e) => e.id)).toEqual(['k']);
+  });
+
+  it('constant 范文常驻：不依赖语料也注入', () => {
+    const ctx = buildChapterContext({
+      ...common2,
+      exemplars: [EX({ id: 'c1', keys: [], content: '短句为主，动作推情绪。', constant: true })],
+    });
+    expect(ctx.style).toContain('短句为主');
   });
 });

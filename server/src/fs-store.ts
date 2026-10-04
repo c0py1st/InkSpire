@@ -361,11 +361,19 @@ function traceItems(list: LoreEntry[]): LoreTraceItem[] {
   return list.map((e) => ({ id: e.id, title: e.title, chars: e.content.length }));
 }
 
-/** 留痕只记 id/标题/字数——真相源与缓存各安其位，删缓存零损失 */
-export function saveLoreActivated(slug: string, chapterId: string, activated: LoreEntry[], dropped: LoreEntry[]): void {
+/** 留痕只记 id/标题/字数——真相源与缓存各安其位，删缓存零损失；style* 段为 A2 范文激活情况 */
+export function saveLoreActivated(slug: string, chapterId: string, trace: {
+  activated: LoreEntry[]; dropped: LoreEntry[];
+  styleActivated?: LoreEntry[]; styleDropped?: LoreEntry[];
+}): void {
   const file = indexFile(slug, 'lore-activated.json');
   const store = (readJson<Record<string, unknown>>(file, {}) ?? {}) as Record<string, LoreTraceEntry>;
-  store[chapterId] = { activated: traceItems(activated), dropped: traceItems(dropped), at: new Date().toISOString() };
+  store[chapterId] = {
+    activated: traceItems(trace.activated), dropped: traceItems(trace.dropped),
+    ...(trace.styleActivated ? { styleActivated: traceItems(trace.styleActivated) } : {}),
+    ...(trace.styleDropped && trace.styleDropped.length ? { styleDropped: traceItems(trace.styleDropped) } : {}),
+    at: new Date().toISOString(),
+  };
   const ids = Object.keys(store);
   if (ids.length > LORE_TRACE_MAX_CHAPTERS) {
     for (const id of ids.sort().slice(0, ids.length - LORE_TRACE_MAX_CHAPTERS)) delete store[id];

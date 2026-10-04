@@ -168,7 +168,14 @@ export interface LoreEntry {
 
 /** 世界书激活留痕的一条（可重建缓存 .index/lore-activated.json，只记摘要不进真相源） */
 export interface LoreTraceItem { id: string; title: string; chars: number }
-export interface LoreTraceEntry { activated: LoreTraceItem[]; dropped: LoreTraceItem[]; at: string }
+/** style* 段：A2 风格范文的激活/溢出（与 lorebook 同文件分键存储，预算各自独立） */
+export interface LoreTraceEntry {
+  activated: LoreTraceItem[];
+  dropped: LoreTraceItem[];
+  styleActivated?: LoreTraceItem[];
+  styleDropped?: LoreTraceItem[];
+  at: string;
+}
 
 /** 采纳大纲修订建议：把 content 写回 sourceChapterId 章的 beat。命中返回 true（就地修改传入的 outline） */
 export function applyOutlineSuggestion(outline: Outline, sug: Suggestion): boolean {
