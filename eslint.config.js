@@ -13,6 +13,9 @@ export default tseslint.config(
       '.npm-cache/**',
       '**/*.config.js',
       'web/src/styles/**',
+      // 桌面打包产物（esbuild bundle / Rust 构建树）：机器生成，不是源码
+      'desktop/src-tauri/target/**',
+      'desktop/src-tauri/resources/**',
     ],
   },
   {

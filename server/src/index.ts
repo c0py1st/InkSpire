@@ -10,7 +10,8 @@ import { projectRouter } from './routes/project';
 import { aiRouter } from './routes/ai';
 
 const PORT = Number(process.env.MOGE_PORT ?? 8787);
-const WEB_DIST = path.join(ROOT, 'web', 'dist');
+// 桌面打包（C1）时前端与 bundle 同置 resources，ROOT 相对推导失效 → 显式指定
+const WEB_DIST = process.env.MOGE_WEB_DIST ? path.resolve(process.env.MOGE_WEB_DIST) : path.join(ROOT, 'web', 'dist');
 
 const app = express();
 app.disable('x-powered-by');

@@ -8,3 +8,8 @@ data/
 # 本地会话/工具状态与测试证据，不入库
 .zcode/
 gui-test-screenshots/
+
+# 桌面打包产物与 Rust 构建缓存（一切可从源码重建）
+desktop/src-tauri/target/
+desktop/src-tauri/resources/
+desktop/src-tauri/gen/

@@ -1,0 +1,15 @@
+[package]
+name = "moge-desktop"
+version = "0.1.0"
+description = "墨阁桌面壳：启动随行 Node 服务并打开本机窗口"
+edition = "2021"
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+
+[profile.release]
+strip = true
+codegen-units = 1

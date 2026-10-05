@@ -1,0 +1,6 @@
+{
+  "identifier": "default",
+  "description": "窗口只加载本机服务（远程 URL），不给任何额外权限",
+  "windows": ["main"],
+  "permissions": []
+}

@@ -1,0 +1,30 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "墨阁",
+  "version": "0.1.0",
+  "identifier": "app.inkspire.moge",
+  "build": {
+    "frontendDist": "../ui-stub"
+  },
+  "app": {
+    "windows": [],
+    "security": {
+      "csp": null
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["nsis"],
+    "icon": ["icons/icon.ico"],
+    "resources": {
+      "resources/server.mjs": "server.mjs",
+      "resources/node.exe": "node.exe",
+      "resources/web-dist": "web-dist"
+    },
+    "windows": {
+      "nsis": {
+        "installMode": "currentUser"
+      }
+    }
+  }
+}

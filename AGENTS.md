@@ -11,6 +11,9 @@
 ## 设计宪法（作者亲自确认的理念）
 
 - **不要过多依赖**：能用 Node 内置能力就不引库（node:sqlite、手写 tar/diff 都是这个精神）。
+  - **例外（作者 2026-10-05 拍板）**：桌面分发 C1 使用 Tauri——破例只发生在**打包层**：
+    运行期仍是 Node + Express + 文件真相源（node.exe/服务端 bundle/前端 dist 全部作为
+    Tauri 资源随行，外壳只做"起进程-等健康-开窗-带 Job"）。产品代码零改动。
 - **文件是真相源**：`data/<书>/` 下的 Markdown/JSON 人类可读、可手改、可 git；
   `.index/`（搜索索引）与 `recaps.json`（卷回本）是**可重建缓存**，删了不影响数据。
 - **降级要活着**：环境能力缺失（旧 Node 无 node:sqlite、模型不支持 tools、无 API Key）时自动退回保守路径，不许崩。
@@ -23,6 +26,16 @@
 - dev 启动：`npm run dev`（5173 前端 / 8787 后端，仅绑 127.0.0.1 + Host 白名单守卫）。
 - 内嵌 WebView 里禁一切 `window.confirm`（用 `store.confirmAsk` 应用内确认框）。
 - 测试碰到真实 `data/` 前必须先备份（记 md5），测完还原并核对。
+- 桌面打包（desktop/）环境备忘（本机实测踩坑记录）：
+  - Rust 走 **GNU 工具链**（复用 D:\MinGW64，免装 VS Build Tools）；`RUSTUP_HOME=D:\rustup`
+    `CARGO_HOME=D:\cargo` 必须在 **纯 ASCII 路径**——中文用户名家目录会让 mingw ld 在
+    rustc 响应文件里读不到 rlib（报假 "cannot find .rlib"）。
+  - crates 镜像写死在 `~/.cargo/config.toml`（rsproxy-sparse）；rustup 同理走 rsproxy。
+  - NSIS 工具缓存在 `%LOCALAPPDATA%\tauri\NSIS`；`nsis_tauri_utils.dll` GitHub 直连易超时，
+    可经 gh-proxy 下载并用双镜像 sha256 交叉校验。
+  - **Git-Bash 会把 `/S` 当路径转掉**：调 NSIS 安装/卸载器必须先 `export MSYS2_ARG_CONV_EXCL='*'`。
+  - 桌面版固定端口 **47821**；数据默认 `%APPDATA%\app.inkspire.moge\data`，
+    设 `MOGE_HOME=<目录>` 即便携模式（数据随行）。
 
 ## 当前工程状态速查
 
@@ -47,7 +60,11 @@
     设定集编辑段；浏览器实测（mock 评审摘真句→收录落盘→已收录态→再收不重复）
   - [完成] B2 世界书 UI 增强：explainLoreActivation 激活解释器（与 activateLore 同源判定）+
     GET /:slug/lore-test 路由 + 设定集内嵌测试器（选章看每条为何进/没进，含预算占用）+ 按激活频次排序
-  - [下一站] C1 Tauri 打包（需作者先拍板是否为桌面分发破"零依赖宪法"）；或回头做 A3 FTS5 反哺生成
+  - [完成] C1 Tauri 桌面打包（作者 2026-10-05 拍板宪法破例·仅打包层）：desktop/ 工作区——
+    esbuild 服务端单文件 + node.exe/前端 dist 作 Tauri 资源随行；Rust 壳只做
+    起子进程→健康等待→开窗→Job(KILL_ON_JOB_CLOSE) 防孤儿；固定端口 47821；MOGE_HOME 便携模式；
+    NSIS 安装器 43.9MB：静默安装→安装版实测（API/SPA 200、%APPDATA% 数据、硬杀零残留）→已卸载还原
+  - [下一站] 可选：A3 FTS5 检索反哺生成 prompt（调研清单遗留的最后一项能力层）
   - 每阶段独立提交、过全量门禁；推送等作者说"推送"
 
 ## 记忆分层同构提示
