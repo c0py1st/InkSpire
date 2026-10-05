@@ -7,6 +7,10 @@
    并做真实验证（浏览器/接口实测，不是"编译通过就算完"）；未能端到端验证的部分要在汇报中明说。
 3. **提交规范**：conventional commits，中文正文，写清"改了什么 + 为什么 + 如何验证"。
 4. **一步一步来**：多阶段任务按既定优先级逐阶段提交，不合并成巨构。
+5. **新增工具一律装 E 盘**（作者 2026-10-05 明令）：不得往 C 盘安装任何新增工具；
+   开发工具集中在 `E:\dev-rust\`（Rust 工具链、cargo、tauri 的 NSIS），E 盘根目录可建
+   `E:\<工具名>` 形式的工具目录。C 盘 `%LOCALAPPDATA%` 等系统约定路径无法改时，用
+   **目录 junction 指回 E 盘**（如 `%LOCALAPPDATA%\tauri → E:\dev-rust\tauri`）。
 
 ## 设计宪法（作者亲自确认的理念）
 
@@ -27,11 +31,13 @@
 - 内嵌 WebView 里禁一切 `window.confirm`（用 `store.confirmAsk` 应用内确认框）。
 - 测试碰到真实 `data/` 前必须先备份（记 md5），测完还原并核对。
 - 桌面打包（desktop/）环境备忘（本机实测踩坑记录）：
-  - Rust 走 **GNU 工具链**（复用 D:\MinGW64，免装 VS Build Tools）；`RUSTUP_HOME=D:\rustup`
-    `CARGO_HOME=D:\cargo` 必须在 **纯 ASCII 路径**——中文用户名家目录会让 mingw ld 在
-    rustc 响应文件里读不到 rlib（报假 "cannot find .rlib"）。
-  - crates 镜像写死在 `~/.cargo/config.toml`（rsproxy-sparse）；rustup 同理走 rsproxy。
-  - NSIS 工具缓存在 `%LOCALAPPDATA%\tauri\NSIS`；`nsis_tauri_utils.dll` GitHub 直连易超时，
+  - Rust 走 **GNU 工具链**（复用 D:\MinGW64，免装 VS Build Tools）；`RUSTUP_HOME=E:\dev-rust\rustup`
+    `CARGO_HOME=E:\dev-rust\cargo`（已固化为用户环境变量，用户 PATH 指向 `E:\dev-rust\cargo\bin`）。
+    **必须纯 ASCII 路径**——中文用户名家目录会让 mingw ld 在 rustc 响应文件里读不到 rlib
+    （报假 "cannot find .rlib"），这也是当初从 C 盘家目录迁走的直接原因。
+  - crates 镜像在 `E:\dev-rust\cargo\config.toml`（rsproxy-sparse）；rustup 更新源同理 rsproxy。
+  - NSIS 工具在 `E:\dev-rust\tauri\NSIS`，经 junction `%LOCALAPPDATA%\tauri → E:\dev-rust\tauri`
+    供 tauri 打包器寻址（它硬编码 LOCALAPPDATA）；`nsis_tauri_utils.dll` GitHub 直连易超时，
     可经 gh-proxy 下载并用双镜像 sha256 交叉校验。
   - **Git-Bash 会把 `/S` 当路径转掉**：调 NSIS 安装/卸载器必须先 `export MSYS2_ARG_CONV_EXCL='*'`。
   - 桌面版固定端口 **47821**；数据默认 `%APPDATA%\app.inkspire.moge\data`，
