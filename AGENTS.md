@@ -47,8 +47,13 @@
     全库 grep 验证过零命中，改动时保持这条。
   - Git-Bash 会把 `/S` 当路径转掉：调 NSIS 安装/卸载器必须先 `export MSYS2_ARG_CONV_EXCL='*'`；
     静默安装默认落 `%LOCALAPPDATA%\墨阁`（不是 Programs 子目录，排查时别看错）。
-  - 桌面版固定端口 **47821**；数据默认 `%APPDATA%\app.inkspire.moge\data`，
-    设 `MOGE_HOME=<目录>` 即便携模式（数据随行）。
+  - 桌面版固定端口 **47821**；数据目录三级策略：**exe 旁有 `data/` 即自动便携** >
+    `MOGE_HOME=<目录>` 显式指定 > 默认 `%APPDATA%\app.inkspire.moge\data`。
+  - `desktop/` 是**独立 npm 项目**（不在根 workspaces 里，有自己的 package-lock 与
+    node_modules；esbuild 自声明），纯 WebUI 的 `npm install` 不触碰 Tauri。
+  - 发版：`npm run desktop:bump <x.y.z>`（写齐 4 处版本）→ `npm run desktop:build` →
+    tag + push → `gh release create`（gh 经 scoop 装在 `E:\Scoop`）上传 setup.exe；
+    **二进制一律走 Releases，不进 git**。
 
 ## 当前工程状态速查
 

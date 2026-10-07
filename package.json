@@ -6,8 +6,7 @@
   "workspaces": [
     "shared",
     "server",
-    "web",
-    "desktop"
+    "web"
   ],
   "scripts": {
     "dev": "concurrently -k -n server,web -c blue,magenta \"npm:dev -w server\" \"npm:dev -w web\"",
@@ -16,8 +15,9 @@
     "test": "vitest run --root server",
     "start": "npm run start -w server",
     "lint": "eslint .",
-    "desktop:dev": "npm run build -w web && npm run dev -w desktop",
-    "desktop:build": "npm run build -w web && npm run build -w desktop"
+    "desktop:dev": "npm run build -w web && cd desktop && npm install && npm run dev",
+    "desktop:build": "npm run build -w web && cd desktop && npm install && npm run build",
+    "desktop:bump": "node desktop/scripts/bump.mjs"
   },
   "devDependencies": {
     "concurrently": "^9.1.2",

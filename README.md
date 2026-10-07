@@ -70,19 +70,33 @@ npm start       # 仅启动后端，同时托管前端静态文件，访问 http
 
 ## 桌面版打包（可选）
 
-想要"双击即用、不开终端"的单机版，可打包成 Windows 桌面应用（Tauri 外壳 + 随行的本地服务）：
+想要"双击即用、不开终端"的单机版，可打包成 Windows 桌面应用（Tauri 外壳 + 随行的本地服务）。
+`desktop/` 是**独立的 npm 项目**（不挂主仓库 workspaces）——纯 WebUI 使用者 `npm install`
+完全碰不到 Rust/Tauri 依赖，打包工具链只装给打包者；二进制发行物走 GitHub Releases，永不进 git。
 
 ```bash
-npm run desktop:build   # 构建前端 → 组装服务端单文件与运行时资源 → 产出 NSIS 安装器
+npm run desktop:build      # 一步到位：构建前端 → 装 desktop 自己的依赖 → 产出 NSIS 安装器
+# 产物：desktop/src-tauri/target/release/bundle/nsis/墨阁_<版本>_x64-setup.exe（约 44MB）
 ```
 
-产物在 `desktop/src-tauri/target/release/bundle/nsis/` 下（约 44MB）。安装后从开始菜单/桌面图标启动，
-数据默认放在 `%APPDATA%\app.inkspire.moge\data`；在 exe 同目录放一个 `data/` 并设环境变量
-`MOGE_HOME=<该目录>` 即为便携模式（书稿跟着文件夹走）。运行时与浏览器版功能完全一致：
-外壳只做"起本地服务 → 等就绪 → 开窗口"，关掉窗口进程一起退出，不留后台残留。
+安装后从开始菜单启动。数据目录三级策略：**exe 旁边有 `data/` 文件夹即自动便携**（书稿跟着走，
+适合 U 盘/多机）；否则默认 `%APPDATA%\app.inkspire.moge\data`；也可用环境变量 `MOGE_HOME=<目录>`
+显式指定。运行时与浏览器版功能完全一致：外壳只做"起本地服务 → 等就绪 → 开窗口"，
+关窗进程一起退出，不留后台残留。
 
-> 构建机需要 Rust（GNU 工具链即可）与 NSIS 工具，首次构建会自动拉取；打包层依赖不影响
-> "运行期零外部依赖、文件即真相源"的产品形态。开发中：`npm run desktop:dev`。
+### 发版流程
+
+```bash
+npm run desktop:bump 0.2.0    # 版本一次写齐 4 处（根/desktop 的 package.json、tauri.conf、Cargo.toml）
+npm run desktop:build         # 产出安装包（Cargo.lock 随构建自动更新）
+git add -A && git commit -m "chore(release): v0.2.0" && git tag v0.2.0
+git push && git push origin v0.2.0
+gh release create v0.2.0 "desktop/src-tauri/target/release/bundle/nsis/墨阁_0.2.0_x64-setup.exe" -n "墨阁 v0.2.0"
+```
+
+> 构建机需要 Rust（GNU 工具链）与 `gh`（scoop 装，落 E 盘）；NSIS 等打包工具缓存在
+> `E:\dev-rust\tauri`（junction 供 tauri 寻址），发版构建不需要联网取工具。
+> 环境细节与踩坑记录见 `AGENTS.md`。开发调试：`npm run desktop:dev`。
 
 ## 数据放在哪
 

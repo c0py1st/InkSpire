@@ -161,15 +161,21 @@ fn main() {
     tauri::Builder::default()
         .setup(|app| {
             let resource_dir = plain(&app.path().resource_dir().map_err(|e| e.to_string())?);
-            // 便携模式：环境里给了 MOGE_HOME 就把书稿数据放在它旁边；否则用系统应用数据目录
+            // 数据目录三级策略：MOGE_HOME 环境变量 > exe 旁已存在 data/（便携模式自动识别）
+            // > 系统应用数据目录（常规安装）
             let (data_dir, log_dir) = match std::env::var("MOGE_HOME") {
                 Ok(home) if !home.trim().is_empty() => {
                     let root = plain(std::path::Path::new(home.trim()));
                     (root.join("data"), root)
                 }
                 _ => {
-                    let appdata = plain(&app.path().app_data_dir().map_err(|e| e.to_string())?);
-                    (appdata.join("data"), appdata)
+                    let side_data = resource_dir.join("data");
+                    if side_data.is_dir() {
+                        (side_data, resource_dir.clone())
+                    } else {
+                        let appdata = plain(&app.path().app_data_dir().map_err(|e| e.to_string())?);
+                        (appdata.join("data"), appdata)
+                    }
                 }
             };
             let child = match start_server(&resource_dir, &data_dir, &log_dir) {
