@@ -91,15 +91,15 @@ npm run desktop:bump 0.2.0    # 版本一次写齐 4 处（根/desktop 的 packa
 npm run desktop:build         # 产出安装包（Cargo.lock 随构建自动更新）
 git add -A && git commit -m "chore(release): v0.2.0" && git tag v0.2.0
 git push && git push origin v0.2.0
-# 发行物用英文名（作者 2026-10-07 定）：下次发布前把 tauri.conf 的 productName 改为 "InkSpire"，
-# NSIS 直接产出 InkSpire_0.2.0_x64-setup.exe——从源头规避"gh 传中文文件名毁资产名"的坑
+# 发行物英文名（已生效）：productName=InkSpire，NSIS 直接产出 InkSpire_x.y.z_x64-setup.exe，
+# 从源头规避"gh 传中文文件名毁资产名"（v0.1.0 的 moge_… 资产为历史遗留，不回改）
 gh release create v0.2.0 desktop/src-tauri/target/release/bundle/nsis/InkSpire_0.2.0_x64-setup.exe \
-  --title "InkSpire v0.2.0" -n "更新说明（界面内品牌仍显示'墨阁'，仅发行/安装层用英文名）"
+  --title "InkSpire v0.2.0" -n "更新说明（界面内品牌仍显示'墨阁'）"
 ```
 
-> 历史注记：v0.1.0 发行时 productName 为"墨阁"，产物名带中文，曾在 Git-Bash 下被
-> gh 咬坏资产名（用 cp ASCII 名规避）。productName 已定改 InkSpire，老"墨阁"安装
-> 与新"InkSpire"安装互不识别（不同安装目录），升级 v0.2+ 时先卸载旧版再装新版。
+> 迁移注记：productName 已由"墨阁"改为"InkSpire"——安装目录/卸载项随之变为
+> `%LOCALAPPDATA%\InkSpire`，与老安装互不识别，发 v0.2+ 时提示"先卸载旧版"；
+> **书稿数据不受影响**（数据目录跟 identifier `app.inkspire.moge` 走，跨版本共享）。
 
 > 构建机需要 Rust（GNU 工具链）与 `gh`（scoop 装，落 E 盘）；NSIS 等打包工具缓存在
 > `E:\dev-rust\tauri`（junction 供 tauri 寻址），发版构建不需要联网取工具。
