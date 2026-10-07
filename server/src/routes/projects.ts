@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { ChapterFile, CharacterCard, Outline } from '../../../shared/src/types';
 import { chapterId as mkChapterId, countChars, volumeId } from '../../../shared/src/util';
 import { buildBookArchive } from '../backup';
+import { buildExportText } from '../export';
 import {
   createProject, deleteProject, getMeta, listChapters, listProjects, loadOutline, saveProjectBundle,
 } from '../fs-store';
@@ -74,7 +75,7 @@ projectsRouter.get('/:slug/backup', (req, res) => {
   }
 });
 
-/** 整本导出 */
+/** 整本导出：md 完整层级 / txt 剥净标记（粘贴连载平台用）；纯拼装见 server/src/export.ts */
 projectsRouter.get('/:slug/export', (req, res) => {
   const slug = req.params.slug;
   const format = (req.query.format as string) === 'txt' ? 'txt' : 'md';
@@ -82,22 +83,7 @@ projectsRouter.get('/:slug/export', (req, res) => {
     const meta = getMeta(slug);
     const outline = loadOutline(slug);
     if (!outline) throw new Error('本书还没有大纲');
-    const chapters = listChapters(slug);
-    const byId = new Map(chapters.map((c) => [c.id, c]));
-
-    const parts: string[] = [`# ${meta.title}\n`];
-    if (meta.logline) parts.push(`> ${meta.logline}\n`);
-    for (const vol of outline.volumes) {
-      parts.push(`\n## ${vol.title}\n`);
-      for (const ch of vol.chapters) {
-        const body = byId.get(ch.id);
-        parts.push(`\n### ${ch.title}\n\n${body?.content?.trim() ? body.content.trim() : '（未完成）'}\n`);
-      }
-    }
-    let text = parts.join('\n');
-    if (format === 'txt') text = text.replace(/^# /gm, '').replace(/^> /gm, '').replace(/\*\*/g, '');
-
-    // 直接下发，不再落盘副本；下载文件名用 slug（title 可能含路径非法字符）
+    const text = buildExportText(meta, outline, listChapters(slug), format);
     res.setHeader('Content-Type', 'text/plain; charset=utf-8');
     res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${encodeURIComponent(`${meta.slug}.${format}`)}`);
     res.send(text);
