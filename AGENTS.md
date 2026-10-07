@@ -30,16 +30,23 @@
 - dev 启动：`npm run dev`（5173 前端 / 8787 后端，仅绑 127.0.0.1 + Host 白名单守卫）。
 - 内嵌 WebView 里禁一切 `window.confirm`（用 `store.confirmAsk` 应用内确认框）。
 - 测试碰到真实 `data/` 前必须先备份（记 md5），测完还原并核对。
-- 桌面打包（desktop/）环境备忘（本机实测踩坑记录）：
-  - Rust 走 **GNU 工具链**（复用 D:\MinGW64，免装 VS Build Tools）；`RUSTUP_HOME=E:\dev-rust\rustup`
-    `CARGO_HOME=E:\dev-rust\cargo`（已固化为用户环境变量，用户 PATH 指向 `E:\dev-rust\cargo\bin`）。
-    **必须纯 ASCII 路径**——中文用户名家目录会让 mingw ld 在 rustc 响应文件里读不到 rlib
-    （报假 "cannot find .rlib"），这也是当初从 C 盘家目录迁走的直接原因。
-  - crates 镜像在 `E:\dev-rust\cargo\config.toml`（rsproxy-sparse）；rustup 更新源同理 rsproxy。
-  - NSIS 工具在 `E:\dev-rust\tauri\NSIS`，经 junction `%LOCALAPPDATA%\tauri → E:\dev-rust\tauri`
-    供 tauri 打包器寻址（它硬编码 LOCALAPPDATA）；`nsis_tauri_utils.dll` GitHub 直连易超时，
-    可经 gh-proxy 下载并用双镜像 sha256 交叉校验。
-  - **Git-Bash 会把 `/S` 当路径转掉**：调 NSIS 安装/卸载器必须先 `export MSYS2_ARG_CONV_EXCL='*'`。
+- 桌面打包（desktop/）**本机环境契约**（作者 2026-10-07 实测确认，助手同日复核通过）：
+  - 本项目是 **Tauri 2 + NSIS**，与 Electron 无关。
+  - `CARGO_HOME=E:\dev-rust\cargo`、`RUSTUP_HOME=E:\dev-rust\rustup`（已固化为用户环境变量）；
+    默认工具链 `stable-x86_64-pc-windows-gnu`（GNU，链接用 `D:\MinGW64` 的 gcc/dlltool，
+    **勿装 VS Build Tools**）；cargo/rustc 1.99。
+    注意工具链路径**必须纯 ASCII**——中文用户名家目录会让 mingw ld 报假
+    "cannot find rlib"（实测过），所以既不能回 C:\Users\郑扬程\ 也不建议挪去含中文的路径。
+  - crates 镜像在 `E:\dev-rust\cargo\config.toml`（rsproxy-sparse）。
+  - `%LOCALAPPDATA%\tauri` 是 **junction → E:\dev-rust\tauri**：`makensis.exe` 与
+    `NSIS\Plugins\x86-unicode\additional\nsis_tauri_utils.dll` 均在位，
+    **打 NSIS 安装包无需再联网取 tauri-utils**。
+  - Rust 构建产物留在项目内 `desktop/src-tauri/target`（D 盘），**不要搬去 C 盘**；
+    C 盘空间有限（约 50GB 空闲），任何构建缓存/下载物都不得堆 C 盘。
+  - **项目内不得写死 `C:\Users` 路径**（缓存类一律走 E 盘、项目目录或系统 API 解析）——
+    全库 grep 验证过零命中，改动时保持这条。
+  - Git-Bash 会把 `/S` 当路径转掉：调 NSIS 安装/卸载器必须先 `export MSYS2_ARG_CONV_EXCL='*'`；
+    静默安装默认落 `%LOCALAPPDATA%\墨阁`（不是 Programs 子目录，排查时别看错）。
   - 桌面版固定端口 **47821**；数据默认 `%APPDATA%\app.inkspire.moge\data`，
     设 `MOGE_HOME=<目录>` 即便携模式（数据随行）。
 
