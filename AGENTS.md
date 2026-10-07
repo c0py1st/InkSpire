@@ -47,6 +47,9 @@
     全库 grep 验证过零命中，改动时保持这条。
   - Git-Bash 会把 `/S` 当路径转掉：调 NSIS 安装/卸载器必须先 `export MSYS2_ARG_CONV_EXCL='*'`；
     静默安装默认落 `%LOCALAPPDATA%\墨阁`（不是 Programs 子目录，排查时别看错）。
+  - **gh 经 Git-Bash 传中文文件名会毁 Release 资产名**（实测"墨阁_0.1.0_…"上传后变"_0.1.0_…"）：
+    发 Release 前先把 setup.exe `cp` 成 ASCII 名（`moge_x.y.z_x64-setup.exe`）再
+    `gh release create/upload`；title/notes 走 JSON 通道中文无恙，只有 argv 里的文件名会坏。
   - 桌面版固定端口 **47821**；数据目录三级策略：**exe 旁有 `data/` 即自动便携** >
     `MOGE_HOME=<目录>` 显式指定 > 默认 `%APPDATA%\app.inkspire.moge\data`。
   - `desktop/` 是**独立 npm 项目**（不在根 workspaces 里，有自己的 package-lock 与

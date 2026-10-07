@@ -91,7 +91,11 @@ npm run desktop:bump 0.2.0    # 版本一次写齐 4 处（根/desktop 的 packa
 npm run desktop:build         # 产出安装包（Cargo.lock 随构建自动更新）
 git add -A && git commit -m "chore(release): v0.2.0" && git tag v0.2.0
 git push && git push origin v0.2.0
-gh release create v0.2.0 "desktop/src-tauri/target/release/bundle/nsis/墨阁_0.2.0_x64-setup.exe" -n "墨阁 v0.2.0"
+# ⚠ Git-Bash 里 gh 传中文文件名会把资产名咬掉（实测"墨阁_"变"_"），发行文件先复制成 ASCII 名再传：
+cp "desktop/src-tauri/target/release/bundle/nsis/墨阁_0.2.0_x64-setup.exe" \
+   desktop/src-tauri/target/release/bundle/nsis/moge_0.2.0_x64-setup.exe
+gh release create v0.2.0 desktop/src-tauri/target/release/bundle/nsis/moge_0.2.0_x64-setup.exe \
+  --title "墨阁 v0.2.0" -n "更新说明（标题/正文走 JSON 通道，中文无恙；只有 argv 里的文件名会坏）"
 ```
 
 > 构建机需要 Rust（GNU 工具链）与 `gh`（scoop 装，落 E 盘）；NSIS 等打包工具缓存在
