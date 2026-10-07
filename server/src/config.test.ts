@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { AppConfig, ProviderProfile } from '../../shared/src/types';
-import { maskConfig, mergeKeys } from './config';
+import { envFirst, maskConfig, mergeKeys } from './config';
 
 const prov = (id: string, apiKey: string, extra: Partial<ProviderProfile> = {}): ProviderProfile => ({
   id, name: id, baseURL: 'https://x.test/v1', apiKey, model: 'm', ...extra,
@@ -55,5 +55,22 @@ describe('mergeKeys（入网按 id 认领已存密钥）', () => {
     const out = mergeKeys(incoming, stored);
     expect(out.mockMode).toBe(true);
     expect(out.assistId).toBe('a');
+  });
+});
+
+describe('envFirst（INKSPIRE 新名优先、MOGE 旧名兜底）', () => {
+  it('只有旧名时兜底命中；两名并存新名优先；空白视为未设', () => {
+    const keys = ['E2E_A', 'E2E_B', 'E2E_C', 'E2E_D'];
+    for (const k of keys) { delete process.env['INKSPIRE_' + k]; delete process.env['MOGE_' + k]; }
+    process.env.MOGE_E2E_A = 'old';
+    expect(envFirst('E2E_A')).toBe('old');
+    process.env.INKSPIRE_E2E_B = 'new';
+    process.env.MOGE_E2E_B = 'old';
+    expect(envFirst('E2E_B')).toBe('new');
+    process.env.INKSPIRE_E2E_C = '   ';
+    process.env.MOGE_E2E_C = 'old';
+    expect(envFirst('E2E_C')).toBe('old'); // 新名空白 → 继续兜底
+    expect(envFirst('E2E_D')).toBeUndefined();
+    for (const k of keys) { delete process.env['INKSPIRE_' + k]; delete process.env['MOGE_' + k]; }
   });
 });

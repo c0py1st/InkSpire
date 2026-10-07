@@ -5,7 +5,7 @@ import { describe, expect, it } from 'vitest';
 
 // 与其他存储层测试同法：import 前把数据目录指到临时区，不碰真实书稿
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'moge-cache-'));
-process.env.MOGE_DATA_DIR = tmp;
+process.env.INKSPIRE_DATA_DIR = tmp;
 
 const { parseUsage } = await import('./ai/usage');
 const { emptyCacheStats, sanitizeCacheStats, recordUsage, loadCacheStats, resetCacheStats, CACHE_RECENT_MAX } = await import('./cache-stats');

@@ -5,7 +5,7 @@ import { beforeAll, describe, expect, it } from 'vitest';
 
 // 在 import fs-store 之前把数据目录指到临时区，测试不碰真实书稿
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'moge-tools-'));
-process.env.MOGE_DATA_DIR = tmp;
+process.env.INKSPIRE_DATA_DIR = tmp;
 
 const { executeTool, TOOL_POLICIES, TOOL_SPECS } = await import('./ai/tools');
 const { loadForeshadows } = await import('./fs-store');

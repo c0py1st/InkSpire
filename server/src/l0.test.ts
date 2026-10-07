@@ -8,7 +8,7 @@ import {
 } from '../../shared/src/l0';
 
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'moge-l0-'));
-process.env.MOGE_DATA_DIR = tmp;
+process.env.INKSPIRE_DATA_DIR = tmp;
 const { sanitizeL0Report, saveChapterL0, loadL0Report } = await import('./l0-report');
 
 describe('L0 纯检查器', () => {

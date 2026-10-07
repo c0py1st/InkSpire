@@ -54,7 +54,7 @@
     与老"墨阁"安装互不识别（发英文名版本时提示先卸载旧版）；**书稿数据跟 identifier
     （app.inkspire.moge）走，跨版本共享，升级不丢书**。
   - 桌面版固定端口 **47821**；数据目录三级策略：**exe 旁有 `data/` 即自动便携** >
-    `MOGE_HOME=<目录>` 显式指定 > 默认 `%APPDATA%\app.inkspire.moge\data`。
+    `INKSPIRE_HOME=<目录>` 显式指定（旧名 MOGE_HOME 兜底） > 默认 `%APPDATA%\app.inkspire.moge\data`。
   - `desktop/` 是**独立 npm 项目**（不在根 workspaces 里，有自己的 package-lock 与
     node_modules；esbuild 自声明），纯 WebUI 的 `npm install` 不触碰 Tauri。
   - 发版：`npm run desktop:bump <x.y.z>`（写齐 4 处版本）→ `npm run desktop:build` →
@@ -86,7 +86,7 @@
     GET /:slug/lore-test 路由 + 设定集内嵌测试器（选章看每条为何进/没进，含预算占用）+ 按激活频次排序
   - [完成] C1 Tauri 桌面打包（作者 2026-10-05 拍板宪法破例·仅打包层）：desktop/ 工作区——
     esbuild 服务端单文件 + node.exe/前端 dist 作 Tauri 资源随行；Rust 壳只做
-    起子进程→健康等待→开窗→Job(KILL_ON_JOB_CLOSE) 防孤儿；固定端口 47821；MOGE_HOME 便携模式；
+    起子进程→健康等待→开窗→Job(KILL_ON_JOB_CLOSE) 防孤儿；固定端口 47821；INKSPIRE_HOME 便携模式；
     NSIS 安装器 43.9MB：静默安装→安装版实测（API/SPA 200、%APPDATA% 数据、硬杀零残留）→已卸载还原
   - [下一站] 可选：A3 FTS5 检索反哺生成 prompt（调研清单遗留的最后一项能力层）
   - 每阶段独立提交、过全量门禁；推送等作者说"推送"

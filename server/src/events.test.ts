@@ -5,7 +5,7 @@ import { describe, expect, it } from 'vitest';
 import type { StoryEvent } from '../../shared/src/types';
 
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'moge-events-'));
-process.env.MOGE_DATA_DIR = tmp;
+process.env.INKSPIRE_DATA_DIR = tmp;
 const { sanitizeStoryEvents, loadEvents, saveEvents, mergeChapterAutoEvents } = await import('./fs-store');
 
 const ev = (over: Partial<StoryEvent>): StoryEvent => ({

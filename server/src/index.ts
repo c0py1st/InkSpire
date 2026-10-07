@@ -1,7 +1,7 @@
 import express from 'express';
 import fs from 'node:fs';
 import path from 'node:path';
-import { DATA_DIR, ROOT, loadConfig } from './config';
+import { DATA_DIR, ROOT, envFirst, loadConfig } from './config';
 import { hostGuard } from './host-guard';
 import { purgeTrash } from './fs-store';
 import { settingsRouter } from './routes/settings';
@@ -9,9 +9,10 @@ import { projectsRouter } from './routes/projects';
 import { projectRouter } from './routes/project';
 import { aiRouter } from './routes/ai';
 
-const PORT = Number(process.env.MOGE_PORT ?? 8787);
+const PORT = Number(envFirst('PORT') ?? 8787);
 // 桌面打包（C1）时前端与 bundle 同置 resources，ROOT 相对推导失效 → 显式指定
-const WEB_DIST = process.env.MOGE_WEB_DIST ? path.resolve(process.env.MOGE_WEB_DIST) : path.join(ROOT, 'web', 'dist');
+const webDistEnv = envFirst('WEB_DIST');
+const WEB_DIST = webDistEnv ? path.resolve(webDistEnv) : path.join(ROOT, 'web', 'dist');
 
 const app = express();
 app.disable('x-powered-by');

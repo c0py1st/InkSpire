@@ -8,7 +8,7 @@ import { buildChapterContext } from './ai/memory';
 import { prosePrompt } from './ai/prompts/prose';
 
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'moge-lore-'));
-process.env.MOGE_DATA_DIR = tmp;
+process.env.INKSPIRE_DATA_DIR = tmp;
 const { sanitizeLoreEntries, sanitizeStyleExemplars, saveLoreActivated, loadLoreActivated } = await import('./fs-store');
 
 const E = (over: Partial<LoreEntry> & { id: string }): LoreEntry => ({

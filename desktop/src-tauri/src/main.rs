@@ -89,9 +89,9 @@ fn start_server(resource_dir: &Path, data_dir: &Path, log_dir: &Path) -> Result<
     Command::new(resource_dir.join("node.exe"))
         .arg(resource_dir.join("server.mjs"))
         .current_dir(resource_dir)
-        .env("MOGE_DATA_DIR", data_dir)
-        .env("MOGE_PORT", PORT.to_string())
-        .env("MOGE_WEB_DIST", resource_dir.join("web-dist"))
+        .env("INKSPIRE_DATA_DIR", data_dir)
+        .env("INKSPIRE_PORT", PORT.to_string())
+        .env("INKSPIRE_WEB_DIST", resource_dir.join("web-dist"))
         .stdout(Stdio::from(out))
         .stderr(Stdio::from(err))
         .spawn()
@@ -190,10 +190,14 @@ fn main() {
     tauri::Builder::default()
         .setup(|app| {
             let resource_dir = plain(&app.path().resource_dir().map_err(|e| e.to_string())?);
-            // 数据目录三级策略：MOGE_HOME 环境变量 > exe 旁已存在 data/（便携模式自动识别）
-            // > 系统应用数据目录（常规安装）
-            let (data_dir, log_dir) = match std::env::var("MOGE_HOME") {
-                Ok(home) if !home.trim().is_empty() => {
+            // 数据目录三级策略：INKSPIRE_HOME（旧名 MOGE_HOME 兜底，兼容 v0.1.0 时期的用户配置）
+            // > exe 旁已存在 data/（便携模式自动识别）> 系统应用数据目录（常规安装）
+            let home_env = std::env::var("INKSPIRE_HOME")
+                .ok()
+                .filter(|s| !s.trim().is_empty())
+                .or_else(|| std::env::var("MOGE_HOME").ok().filter(|s| !s.trim().is_empty()));
+            let (data_dir, log_dir) = match home_env {
+                Some(home) => {
                     let root = plain(std::path::Path::new(home.trim()));
                     (root.join("data"), root)
                 }

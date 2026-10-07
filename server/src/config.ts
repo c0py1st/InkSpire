@@ -3,10 +3,21 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { AppConfig, defaultConfig, PROVIDER_PRESETS } from '../../shared/src/types';
 
+/**
+ * 环境变量统一读取：INKSPIRE_ 新前缀优先，MOGE_ 旧名兜底（v0.1.0 已发行安装器写的是旧名）。
+ * 品牌统一为 InkSpire 后的过渡层——外部老配置不炸，内部新代码只认新名。
+ */
+export function envFirst(name: string): string | undefined {
+  const read = (k: string): string | undefined => {
+    const v = process.env[k];
+    return v && v.trim() ? v : undefined;
+  };
+  return read(`INKSPIRE_${name}`) ?? read(`MOGE_${name}`);
+}
+
+const dataEnv = envFirst('DATA_DIR');
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
-const DATA_DIR = process.env.MOGE_DATA_DIR
-  ? path.resolve(process.env.MOGE_DATA_DIR)
-  : path.join(ROOT, 'data');
+const DATA_DIR = dataEnv ? path.resolve(dataEnv) : path.join(ROOT, 'data');
 const CONFIG_PATH = path.join(DATA_DIR, '.config.json');
 
 export { ROOT, DATA_DIR };
