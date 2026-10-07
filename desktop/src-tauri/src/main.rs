@@ -21,14 +21,41 @@ extern "system" {
     fn MessageBoxW(hwnd: *mut core::ffi::c_void, text: *const u16, caption: *const u16, utype: u32) -> i32;
 }
 
+#[link(name = "kernel32")]
+extern "system" {
+    fn CreateMutexW(attrs: *mut core::ffi::c_void, initialOwner: i32, name: *const u16) -> *mut core::ffi::c_void;
+    fn GetLastError() -> u32;
+}
+
+const ERROR_ALREADY_EXISTS: u32 = 183;
+
+/// 单实例锁：双开时第二实例明确提示"已在运行"后退出——
+/// 否则第二实例会因端口 47821 被占卡在健康等待 30 秒，报出难懂的超时错。
+/// Local\ 命名空间=按登录会话隔离，同机不同用户各自可开一份，与端口绑定语义一致。
+fn ensure_single_instance() {
+    let name = utf1z("Local\\InkSpireSingleInstance");
+    unsafe {
+        let h = CreateMutexW(std::ptr::null_mut(), 1, name.as_ptr());
+        if !h.is_null() && GetLastError() == ERROR_ALREADY_EXISTS {
+            show_dialog("墨阁已在运行", "墨阁已经在运行了。\n请查看已打开的窗口；若看不到，检查任务栏或系统托盘。");
+            std::process::exit(0);
+        }
+        // 句柄是裸指针（无 Drop），此处天然不调 CloseHandle——锁/Job 的生命周期=进程
+    }
+}
+
 fn utf1z(s: &str) -> Vec<u16> {
     s.encode_utf16().chain(std::iter::once(0)).collect()
 }
 
-fn show_error(msg: &str) {
-    let (t, c) = (utf1z(msg), utf1z("墨阁启动失败"));
+fn show_dialog(caption: &str, msg: &str) {
+    let (t, c) = (utf1z(msg), utf1z(caption));
     // MB_ICONERROR = 0x10
     unsafe { MessageBoxW(std::ptr::null_mut(), t.as_ptr(), c.as_ptr(), 0x10) };
+}
+
+fn show_error(msg: &str) {
+    show_dialog("墨阁启动失败", msg);
 }
 
 /// Windows 下 tauri 的 resource_dir/app_data_dir 可能带 `\\?\` 扩展长度前缀：
@@ -151,13 +178,15 @@ fn attach_kill_on_close(child: &Child) -> Result<(), String> {
         if AssignProcessToJobObject(job, child.as_raw_handle() as *mut _) == 0 {
             return Err("AssignProcessToJobObject 失败".to_string());
         }
-        // 故意永不主动 CloseHandle：进程无论如何终结，OS 收回句柄表即触发连带击杀
-        std::mem::forget(job);
+        // 故意不 CloseHandle：进程终结时 OS 收回句柄表即触发 Job 的 KILL_ON_JOB_CLOSE
+        // （裸指针无 Drop，句柄天然"泄漏"到进程结束，正是所需语义）
+        let _ = job;
     }
     Ok(())
 }
 
 fn main() {
+    ensure_single_instance();
     tauri::Builder::default()
         .setup(|app| {
             let resource_dir = plain(&app.path().resource_dir().map_err(|e| e.to_string())?);
