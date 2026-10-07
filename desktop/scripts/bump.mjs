@@ -34,4 +34,4 @@ if (!cargo.includes(`version = "${v}"`)) { console.error('Cargo.toml 版本行�
 fs.writeFileSync(cargoFile, cargo, 'utf8');
 console.log('✓ desktop/src-tauri/Cargo.toml');
 
-console.log(`\nv${v} 已写齐。后续：\n  npm run desktop:build   # Cargo.lock 随构建自动更新\n  git add -A && git commit -m "chore(release): v${v}" && git tag v${v}\n  git push && git push origin v${v}   # 推送需作者口令\n  gh release create v${v} desktop/src-tauri/target/release/bundle/nsis/墨阁_${v}_x64-setup.exe -n "墨阁 v${v}"`);
+console.log(`\nv${v} 已写齐。后续：\n  npm run desktop:build   # Cargo.lock 随构建自动更新\n  git add -A && git commit -m "chore(release): v${v}" && git tag v${v}\n  git push && git push origin v${v}   # 推送需作者口令\n  # 英文名发行（见 README 发版流程）：productName=InkSpire 时产物即 InkSpire_${v}_x64-setup.exe\n  gh release create v${v} desktop/src-tauri/target/release/bundle/nsis/InkSpire_${v}_x64-setup.exe --title "InkSpire v${v}"`);
