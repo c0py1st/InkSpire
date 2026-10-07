@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { atParagraphStart, ensureParagraphIndent, findTextRanges } from '../../shared/src/util';
+import { atParagraphStart, ensureParagraphIndent, findTextRanges, moveChapterAcrossVolumes } from '../../shared/src/util';
 
 describe('ensureParagraphIndent', () => {
   it('给每个非空行补两个全角空格', () => {
@@ -49,5 +49,39 @@ describe('findTextRanges（通读高亮区间）', () => {
     expect(findTextRanges('正文', '  ')).toEqual([]);
     expect(findTextRanges('正文', '正\n文')).toEqual([]);
     expect(findTextRanges('正文', '不存在')).toEqual([]);
+  });
+});
+
+describe('moveChapterAcrossVolumes（跨卷移章）', () => {
+  const mk = () => ([
+    { chapters: [{ id: 'v01c001' }, { id: 'v01c002' }] },
+    { chapters: [{ id: 'v02c001' }] },
+    { chapters: [] as Array<{ id: string }> },
+  ]);
+  const ids = (vs: ReturnType<typeof mk>) => vs.map((v) => v.chapters.map((c) => c.id).join(','));
+
+  it('卷内交换照旧', () => {
+    const vs = mk();
+    expect(moveChapterAcrossVolumes(vs, 0, 0, 1)).toBe(true);
+    expect(ids(vs)).toEqual(['v01c002,v01c001', 'v02c001', '']);
+  });
+  it('卷首↑移入上一卷末尾；卷尾↓移入下一卷开头', () => {
+    const up = mk();
+    expect(moveChapterAcrossVolumes(up, 1, 0, -1)).toBe(true);
+    expect(ids(up)).toEqual(['v01c001,v01c002,v02c001', '', '']);
+    const down = mk();
+    expect(moveChapterAcrossVolumes(down, 0, 1, 1)).toBe(true);
+    expect(ids(down)).toEqual(['v01c001', 'v01c002,v02c001', '']);
+  });
+  it('移入空卷可行；全卷只剩一章再跨卷=空卷留原位', () => {
+    const vs = mk();
+    expect(moveChapterAcrossVolumes(vs, 1, 0, 1)).toBe(true);   // v02 唯一一章 ↓ 进空 v03 开头
+    expect(ids(vs)).toEqual(['v01c001,v01c002', '', 'v02c001']);
+  });
+  it('首卷卷首↑ / 末卷卷尾↓ 不动，返回 false', () => {
+    const vs = mk();
+    expect(moveChapterAcrossVolumes(vs, 0, 0, -1)).toBe(false);
+    expect(moveChapterAcrossVolumes(vs, 2, 0, 1)).toBe(false);  // 空卷无事
+    expect(ids(vs)).toEqual(['v01c001,v01c002', 'v02c001', '']);
   });
 });

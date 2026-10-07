@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import type { ChapterStatus, Outline, Volume } from '../../../shared/src/types';
 import { recapFingerprint } from '../../../shared/src/types';
-import { chapterId as mkChapterId } from '../../../shared/src/util';
+import { chapterId as mkChapterId, moveChapterAcrossVolumes } from '../../../shared/src/util';
 import { api } from '../api/client';
 import { useStore } from '../state/store';
 import { BuDialog } from './BuDialog';
@@ -83,13 +83,8 @@ export function OutlineView() {
   }
 
   function moveChapter(vi: number, ci: number, dir: -1 | 1) {
-    mutateVolumes((vs) => {
-      const arr = vs[vi].chapters;
-      const j = ci + dir;
-      if (j < 0 || j >= arr.length) return vs;
-      [arr[ci], arr[j]] = [arr[j], arr[ci]];
-      return vs;
-    });
+    // 卷内交换；卷首↑落进上一卷末尾、卷尾↓进入下一卷开头（跨卷搬移，正文文件不动）
+    mutateVolumes((vs) => { moveChapterAcrossVolumes(vs, vi, ci, dir); return vs; });
   }
 
   function removeChapter(vi: number, ci: number) {
@@ -246,8 +241,8 @@ export function OutlineView() {
                     <option value="revised">定稿</option>
                   </select>
                   <button className="icon-btn" title="写作或打开本章" onClick={() => void openChapter(c.id)}>✎</button>
-                  <button className="icon-btn" title="上移" onClick={() => moveChapter(vi, ci, -1)}>↑</button>
-                  <button className="icon-btn" title="下移" onClick={() => moveChapter(vi, ci, 1)}>↓</button>
+                  <button className="icon-btn" title="上移（卷首再上移将移入上一卷末尾）" onClick={() => moveChapter(vi, ci, -1)}>↑</button>
+                  <button className="icon-btn" title="下移（卷尾再下移将移入下一卷开头）" onClick={() => moveChapter(vi, ci, 1)}>↓</button>
                   <button className="icon-btn danger" title="从大纲中移除（正文文件保留）" onClick={() => removeChapter(vi, ci)}>✕</button>
                 </div>
                 <textarea

@@ -56,6 +56,35 @@ export function atParagraphStart(text: string, offset: number): boolean {
 }
 
 /**
+ * 章上移/下移（大纲数组就地操作，返回是否发生了移动）：
+ * 卷内交换；卷首再上移 → 落入上一卷末尾、卷尾再下移 → 落入下一卷开头（跨卷搬移）。
+ * 章正文按 id 存文件、id 不随位置变，所以跨卷搬动只动大纲数组——文件名/摘要/事件全部无感。
+ */
+export function moveChapterAcrossVolumes(
+  volumes: Array<{ chapters: Array<{ id: string }> }>,
+  vi: number, ci: number, dir: -1 | 1,
+): boolean {
+  const arr = volumes[vi]?.chapters;
+  if (!arr) return false;
+  const j = ci + dir;
+  if (j >= 0 && j < arr.length) {
+    [arr[ci], arr[j]] = [arr[j], arr[ci]];
+    return true;
+  }
+  if (j < 0 && vi > 0) {
+    volumes[vi - 1].chapters.push(arr[ci]);
+    arr.splice(ci, 1);
+    return true;
+  }
+  if (j >= arr.length && vi < volumes.length - 1) {
+    volumes[vi + 1].chapters.unshift(arr[ci]);
+    arr.splice(ci, 1);
+    return true;
+  }
+  return false;
+}
+
+/**
  * 通读模式搜索高亮用：找出 query 在 text 中所有不重叠命中区间 [start,end)。
  * 大小写不敏感（中文经 toLowerCase 恒等，无需分支）；query 含换行/为空返回 []；
  * 纯 indexOf 扫描，不走 RegExp——任意用户输入无注入/回溯风险。
