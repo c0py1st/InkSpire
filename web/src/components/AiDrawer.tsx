@@ -583,10 +583,10 @@ export function AiDrawer() {
                     <div key={i} className="vol-block" style={{ padding: '10px 12px', marginBottom: 10 }}>
                       <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
                         <span style={{ fontWeight: 700 }}>{p.name}</span>
-                        <span className={`rv-score ${p.overall >= 7 ? 'good' : p.overall >= 5 ? 'mid' : 'bad'}`}>{p.overall}/10</span>
-                        <span style={{ fontSize: 11.5, color: p.wouldContinue ? 'var(--ok)' : 'var(--danger)' }}>
+                        <span className={`rv-continue ${p.wouldContinue ? 'yes' : 'no'}`}>
                           {p.wouldContinue ? '会追下去' : '想弃'}
                         </span>
+                        <span className="rv-score-faint" title="读者主观综合分，同章重跑会上下浮动，参考即可">综合 {p.overall}</span>
                       </div>
                       {p.praise && <div style={{ fontSize: 12.5, color: 'var(--ok)', marginTop: 4 }}>＋ {p.praise}</div>}
                       {p.grievances.map((g, k) => (
@@ -637,7 +637,7 @@ export function AiDrawer() {
             )}
           </div>
           <div className="m-foot">
-            <span style={{ fontSize: 11.5, color: 'var(--text-faint)' }}>评审模拟读者体验，不改正文；每条抱怨的引文已逐字比对原文。</span>
+            <span style={{ fontSize: 11.5, color: 'var(--text-faint)' }}>评审模拟读者体验，不改正文；每条抱怨的引文已逐字比对原文。综合分是主观手感，重跑会浮动，看引证和改稿优先级即可。</span>
             <div className="spacer" />
             <Btn small onClick={() => void runReview()} disabled={review === 'loading'}>重审本章</Btn>
           </div>
