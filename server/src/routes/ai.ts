@@ -348,7 +348,7 @@ async function runOneChapter(task: BgGenTask, item: QueueItem): Promise<ChapterR
       if (miss.length) {
         const tokens = [...new Set(miss.map((m) => m.token))];
         const repair = prosePrompt(ctx, targetWords);
-        repair.user += `\n\n【契约自检未过·整章重写】上一稿未落实以下契约名物：${tokens.map((t) => `「${t}」`).join('、')}。重写全新完整一稿：必须让这些名物由人物之口或情节自然带出（严禁照抄本要求句），其余剧情与文风保持不变。`;
+        repair.user += `\n\n【契约自检未过·整章重写】上一稿遗漏了以下契约名物：${tokens.map((t) => `「${t}」`).join('、')}。重写全新完整一稿，硬性要求：每个名物的原词必须在正文中逐字出现至少一次（作为道具、地名、人名、称号或台词皆可，出处情节可自由虚构），把它们织进本章剧情而非贴在表面；本条要求本身不得抄入正文。`;
         let fresh = '';
         let freshFinish = '';
         try {
@@ -366,10 +366,13 @@ async function runOneChapter(task: BgGenTask, item: QueueItem): Promise<ChapterR
           }
         } catch { /* 重写失败：保留首稿，miss 仍作告警 */ }
         // 仅采纳"非截断且 miss 严格减少"的重写稿——宁可留首稿的 miss，也不存半截章
+        let adopted = false;
         if (fresh.trim() && freshFinish !== 'length') {
           const miss2 = contractMisses(activeContracts, fresh);
-          if (miss2.length < miss.length) { acc = fresh; miss = miss2; }
+          adopted = miss2.length < miss.length;
+          if (adopted) { acc = fresh; miss = miss2; }
         }
+        console.error(`[moge:bggen] 契约自检 ${chapterId}：漏 ${tokens.length} 词[${tokens.join(',')}] 重写${fresh.length}字(finish=${freshFinish || '?'}) ${adopted ? '已采纳' : '未改善,留首稿'}`);
         if (miss.length) result.contractMiss = miss;
       }
     }
