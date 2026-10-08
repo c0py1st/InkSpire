@@ -542,10 +542,6 @@ textarea { resize: vertical; line-height: 1.6; }
 }
 
 /* 读者评审（E2）：绝对分噪声大，只作弱提示；行为裁决（追/弃）才是主信号 */
-.rv-score { font-size: 12px; font-weight: 700; padding: 1px 8px; border-radius: var(--r-pill); background: var(--gray-3); }
-.rv-score.good { color: var(--ok); }
-.rv-score.mid { color: var(--warn); }
-.rv-score.bad { color: var(--danger); }
 .rv-continue { font-size: 12px; font-weight: 700; padding: 1px 8px; border-radius: var(--r-pill); background: var(--gray-3); }
 .rv-continue.yes { color: var(--ok); }
 .rv-continue.no { color: var(--danger); }

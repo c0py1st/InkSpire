@@ -127,7 +127,7 @@ export function HealthView() {
                   <>
                     <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 8 }}>
                       <span>留存把握</span>
-                      <span className={`rv-score ${goldenReport.retentionScore >= 7 ? 'good' : goldenReport.retentionScore >= 5 ? 'mid' : 'bad'}`}>{goldenReport.retentionScore}/10</span>
+                      <span className="rv-score-faint" title="主观把握分，重跑评审会浮动；真正该看的是逐章的留得住/可改/建议重写裁决与带验真引证的抱怨">留存 {goldenReport.retentionScore}</span>
                       {goldenReport.overall && <span className="pane-sub" style={{ fontSize: 12 }}>{goldenReport.overall}</span>}
                     </div>
                     {goldenReport.chapters.map((c) => (
