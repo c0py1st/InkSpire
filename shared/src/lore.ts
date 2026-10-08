@@ -91,7 +91,6 @@ export function activateLore(args: {
   return { activated, dropped };
 }
 
-/** 注入块文本：每行「- 【条名】内容」。空列表返回 ''（调用侧据此不出块） */
 /**
  * 激活条目的注入排版。契约条与非契约条分级：
  * - 有 contract 时单独分组置顶并带硬约束头——要求「主动落实」而非仅仅「不违背」
@@ -108,6 +107,30 @@ export function loreBlockText(entries: LoreEntry[]): string {
   }
   if (others.length) blocks.push(others.map(bullet).join('\n'));
   return blocks.join('\n');
+}
+
+/* ---------------- 契约名物自检（生成链重写判定与 UI 提示共用；纯函数零模型） ---------------- */
+
+/** 回退提取要排除的字符：标点的与虚词——防把「结局必须是主角胜出」这类条款当名物造成误伤重写 */
+const NOT_NOUN_LIKE = /[的是一不没未需须要应当而与和或但即若因为，。、；：！？（）()《》「」『』…—·\s]/;
+
+/** 一条契约的"必现名物"：mustInclude 显式声明优先；否则回退提取 content 里 1~6 字的名物化「」短引用 */
+export function contractTokens(e: LoreEntry): string[] {
+  const declared = (e.mustInclude ?? []).map((t) => t.trim()).filter(Boolean);
+  if (declared.length) return [...new Set(declared)].slice(0, 12);
+  const found = [...e.content.matchAll(/「([^」\n]{1,6})」/g)].map((m) => m[1].trim());
+  const clean = found.filter((t) => t && !NOT_NOUN_LIKE.test(t));
+  return [...new Set(clean)].slice(0, 5);
+}
+
+/** 逐条契约核对正文是否落实名物；返回缺失清单（空=全部命中或无可检名物）。子串命中，中文零分词依赖 */
+export function contractMisses(entries: LoreEntry[], text: string): Array<{ title: string; token: string }> {
+  const out: Array<{ title: string; token: string }> = [];
+  for (const e of entries) {
+    if (e.contract !== true || e.enabled === false) continue;
+    for (const t of contractTokens(e)) if (!text.includes(t)) out.push({ title: e.title, token: t });
+  }
+  return out;
 }
 
 /* ---------------- 激活解释器（UI 测试器用；判定逻辑与 activateLore 严格同源） ---------------- */

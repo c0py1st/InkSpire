@@ -162,6 +162,7 @@ export interface LoreEntry {
   };
   constant?: boolean;            // 常驻：不查触发词直接激活
   contract?: boolean;            // 大纲契约：豁免预算裁剪
+  mustInclude?: string[];        // 契约条专用：这些名物/称谓必须在本章正文出现；留空则从 content 的「…」短引用回退提取
   priority?: number;             // 预算竞争排序，默认 0
   enabled?: boolean;             // 临时停用开关，缺省视为 true
 }
@@ -363,6 +364,8 @@ export interface GenChapterResult {
   truncated?: boolean;
   /** 自动归档（摘要+建议探测）是否成功 */
   archived?: boolean;
+  /** 契约名物自检未过：正文未出现契约要求落实的名物（title=契约条名，token=缺失词）；full 模式已自动重写一次仍未命中才落此字段 */
+  contractMiss?: Array<{ title: string; token: string }>;
   error?: string;
 }
 

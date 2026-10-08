@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { activateLore, explainLoreActivation, loreBlockText, loreKeyHit } from '../../shared/src/lore';
+import { activateLore, contractMisses, contractTokens, explainLoreActivation, loreBlockText, loreKeyHit } from '../../shared/src/lore';
 import type { LoreEntry, Outline } from '../../shared/src/types';
 import { buildChapterContext } from './ai/memory';
 import { prosePrompt } from './ai/prompts/prose';
@@ -118,6 +118,45 @@ describe('世界书消毒（落盘/前端输入绝不信任）', () => {
     expect(clean[1].scope).toEqual({ volumeId: 'v1', chapterFrom: 'v01c001' });
     expect(sanitizeLoreEntries({ nope: 1 })).toEqual([]);
     expect(sanitizeLoreEntries(null)).toEqual([]);
+  });
+});
+
+describe('契约名物自检（contractTokens / contractMisses）', () => {
+  const C = (over: Partial<LoreEntry> & { id: string }): LoreEntry => E({ contract: true, ...over });
+
+  it('mustInclude 显式声明优先于回退提取；正文命中即通过', () => {
+    const c = C({ id: 'c', title: '剑名契约', content: '真名叫「梓木」', mustInclude: ['梓木', '照胆'] });
+    expect(contractTokens(c)).toEqual(['梓木', '照胆']);
+    expect(contractMisses([c], '白鹤川抚着梓木剑，照胆出鞘')).toEqual([]);
+    expect(contractMisses([c], '他握着剑，没有提名字')).toEqual([{ title: '剑名契约', token: '梓木' }, { title: '剑名契约', token: '照胆' }]);
+  });
+
+  it('无 mustInclude → 从 content 的「」短引用回退；含虚词/标点的长引用被排除', () => {
+    const c = C({ id: 'c', title: 'T', content: '剑真名「梓木」，另有单字「鞘」，还有「结局必须是主角胜出」与「雨。夜」' });
+    const toks = contractTokens(c);
+    expect(toks).toContain('梓木');
+    expect(toks).toContain('鞘');
+    expect(toks).not.toContain('结局必须是主角胜出');
+    expect(toks.some((t) => t.includes('。'))).toBe(false);
+  });
+
+  it('非契约条 / 停用契约不检；mustInclude 去重', () => {
+    const plain = E({ id: 'p', title: 'P', content: '「玄冰」', constant: true });
+    expect(contractMisses([plain], '通篇没有玄冰')).toEqual([]);
+    const off = C({ id: 'o', title: 'O', content: 'x', mustInclude: ['灵珠'], enabled: false });
+    expect(contractMisses([off], '没有灵珠')).toEqual([]);
+    expect(contractTokens(C({ id: 'd', title: 'd', content: 'x', mustInclude: ['剑', '剑', ' 剑 '] }))).toEqual(['剑']);
+  });
+
+  it('消毒器：mustInclude 仅契约条保留，trim + 截断 40 + 上限 12；非契约丢弃', () => {
+    const clean = sanitizeLoreEntries([
+      { id: 'c', title: 'T', content: 'x', contract: true, mustInclude: [' 梓木 ', '', 'x'.repeat(60), ...Array.from({ length: 20 }, (_, i) => `t${i}`)] },
+      { id: 'p', title: 'T', content: 'x', mustInclude: ['不该留'] },
+    ]);
+    expect(clean[0].mustInclude![0]).toBe('梓木');
+    expect(clean[0].mustInclude![1]).toBe('x'.repeat(40));
+    expect(clean[0].mustInclude).toHaveLength(12);
+    expect(clean[1].mustInclude).toBeUndefined();
   });
 });
 

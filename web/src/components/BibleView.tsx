@@ -221,10 +221,15 @@ function LorebookSection({ outline }: { outline: Outline | null }) {
             <div className="field"><label>设定内容（命中后原样注入 prompt）</label>
               <textarea style={{ minHeight: 56 }} value={e.content} onChange={(ev) => patch(i, { content: ev.target.value })} />
             </div>
+            {!!e.contract && (
+              <div className="field"><label>必现名物（逗号/顿号分隔；正文生成后逐一核对，缺失则自动整章重写一次）· 留空则从内容里的「」短引用自动提取</label>
+                <input type="text" value={(e.mustInclude ?? []).join(', ')} placeholder="例：梓木, 照胆剑" onChange={(ev) => patch(i, { mustInclude: parseKeys(ev.target.value).length ? parseKeys(ev.target.value) : undefined })} />
+              </div>
+            )}
             <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', alignItems: 'center', fontSize: 13 }}>
               <label className="wn-toggle" style={{ margin: 0 }}><input type="checkbox" checked={e.enabled !== false} onChange={(ev) => patch(i, { enabled: ev.target.checked || undefined })} /> 启用</label>
               <label className="wn-toggle" style={{ margin: 0 }}><input type="checkbox" checked={!!e.constant} onChange={(ev) => patch(i, { constant: ev.target.checked || undefined })} /> 常驻</label>
-              <label className="wn-toggle" style={{ margin: 0 }}><input type="checkbox" checked={!!e.contract} onChange={(ev) => patch(i, { contract: ev.target.checked || undefined })} /> 契约（豁免预算）</label>
+              <label className="wn-toggle" style={{ margin: 0 }}><input type="checkbox" checked={!!e.contract} onChange={(ev) => patch(i, ev.target.checked ? { contract: true } : { contract: undefined, mustInclude: undefined })} /> 契约（豁免预算）</label>
               <label className="wn-toggle" style={{ margin: 0, gap: 4 }}>优先级 <input type="number" style={{ width: 60 }} value={e.priority ?? 0} onChange={(ev) => { const n = Number(ev.target.value); patch(i, { priority: Number.isFinite(n) && n !== 0 ? n : undefined }); }} /></label>
             </div>
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', marginTop: 8, fontSize: 13 }}>

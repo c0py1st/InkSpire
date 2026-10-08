@@ -338,6 +338,14 @@ export function sanitizeLoreEntries(input: unknown): LoreEntry[] {
     }
     if (x.constant === true) entry.constant = true;
     if (x.contract === true) entry.contract = true;
+    // mustInclude 仅对契约条有意义：非契约条直接丢弃，避免脏数据混进自检
+    if (entry.contract === true && Array.isArray(x.mustInclude)) {
+      const mi = x.mustInclude
+        .filter((t): t is string => typeof t === 'string' && !!t.trim())
+        .map((t) => t.trim().slice(0, 40))
+        .slice(0, 12);
+      if (mi.length) entry.mustInclude = mi;
+    }
     if (typeof x.priority === 'number' && Number.isFinite(x.priority)) entry.priority = Math.max(-100, Math.min(100, Math.round(x.priority)));
     if (x.enabled === false) entry.enabled = false;
     out.push(entry);

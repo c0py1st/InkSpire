@@ -31,6 +31,7 @@ import { readerReviewPrompt, normalizeReaderReview, goldenThreePrompt, normalize
 import { buildHealthReport } from '../health-aggregate';
 import { recapPrompt } from '../ai/prompts/recap';
 import { countChars, ensureParagraphIndent } from '../../../shared/src/util';
+import { contractMisses } from '../../../shared/src/lore';
 
 export const aiRouter = Router();
 
@@ -334,6 +335,43 @@ async function runOneChapter(task: BgGenTask, item: QueueItem): Promise<ChapterR
       } catch { /* 补完失败保留原截断稿 */ }
       if (countChars(acc) === countChars(before)) tailReason = finishReason; // 补完没产出，仍算截断
       finishReason = tailReason;
+    }
+
+    // 契约名物自检：仅对"已激活的契约条"核对正文是否落实其名物（未激活=不在本章约束内，不追责）。
+    // miss 非空且 full 模式 → 静默整章重写一次（不打扰首稿回显，收尾从盘重载即见定稿）。
+    // 重写稿仅在 miss 严格减少时采纳——防止把通顺的首稿换成更差的稿；仍 miss 则挂 result 交人工。
+    // 真书无 lorebook 时 activeContracts 为空，此块零成本直过。
+    if (mode === 'full' && !task.ctl.signal.aborted && !task.stopRequested) {
+      const activatedIds = new Set((ctx.loreTrace?.activated ?? []).map((a) => a.id));
+      const activeContracts = loadLorebook(slug).filter((e) => e.contract === true && activatedIds.has(e.id));
+      let miss = contractMisses(activeContracts, acc);
+      if (miss.length) {
+        const tokens = [...new Set(miss.map((m) => m.token))];
+        const repair = prosePrompt(ctx, targetWords);
+        repair.user += `\n\n【契约自检未过·整章重写】上一稿未落实以下契约名物：${tokens.map((t) => `「${t}」`).join('、')}。重写全新完整一稿：必须让这些名物由人物之口或情节自然带出（严禁照抄本要求句），其余剧情与文风保持不变。`;
+        let fresh = '';
+        let freshFinish = '';
+        try {
+          for await (const delta of streamChat(cfg, creativeProfile(cfg), [
+            { role: 'system', content: repair.system },
+            { role: 'user', content: repair.user },
+          ], {
+            signal: task.ctl.signal, kind: 'prose',
+            onMeta: (m) => {
+              freshFinish = m.finishReason ?? freshFinish;
+              if (m.usage) recordUsage(slug, { source: 'prose-repair', chapterId, usage: m.usage });
+            },
+          })) {
+            fresh += delta;
+          }
+        } catch { /* 重写失败：保留首稿，miss 仍作告警 */ }
+        // 仅采纳"非截断且 miss 严格减少"的重写稿——宁可留首稿的 miss，也不存半截章
+        if (fresh.trim() && freshFinish !== 'length') {
+          const miss2 = contractMisses(activeContracts, fresh);
+          if (miss2.length < miss.length) { acc = fresh; miss = miss2; }
+        }
+        if (miss.length) result.contractMiss = miss;
+      }
     }
 
     acc = ensureParagraphIndent(acc);

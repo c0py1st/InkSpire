@@ -591,9 +591,11 @@ export const useStore = create<Store>((set, get) => ({
         const doneN = results.filter((r) => r.status === 'done').length;
         const skipN = results.filter((r) => r.status === 'skipped').length;
         const truncN = results.filter((r) => r.truncated).length;
+        const missN = results.filter((r) => r.contractMiss?.length).length;
         const totalWords = results.reduce((a, r) => a + (r.wordCount ?? 0), 0);
         const bits = [`连写结束：写了 ${doneN} 章${skipN ? `、跳过有正文的 ${skipN} 章` : ''}，共 ${totalWords.toLocaleString()} 字`];
         if (truncN) bits.push(`${truncN} 章结尾可能不完整，可打开该章点「续写」补完`);
+        if (missN) bits.push(`${missN} 章契约名物自动重写后仍未落实，看该章完成提示`);
         bits.push('摘要已进记忆、设定建议攒在批注抽屉');
         if (status === 'cancelled') bits.unshift('已停止——');
         else if (status === 'error') bits.unshift(`中途失败（${error ?? '未知错误'}）：`);
@@ -602,6 +604,7 @@ export const useStore = create<Store>((set, get) => ({
       }
       if (!targetId) return;
       const title = get().bundle?.outline?.volumes.flatMap((v) => v.chapters).find((c) => c.id === targetId)?.title ?? '本章';
+      const selfMiss = results?.find((r) => r.chapterId === targetId)?.contractMiss;
       if (status === 'done') {
         get().toast(
           truncated
@@ -609,6 +612,9 @@ export const useStore = create<Store>((set, get) => ({
             : `《${title}》生成完毕（${(wordCount ?? 0).toLocaleString()} 字）`,
           truncated ? 'info' : 'ok',
         );
+        if (selfMiss?.length) {
+          get().toast(`契约名物未落实（已自动重写仍未命中）：${selfMiss.map((m) => `「${m.token}」`).join('、')}——建议手动补写或重生成`, 'error');
+        }
       }
       else if (status === 'cancelled') get().toast(`已停止，《${title}》保留了 ${(wordCount ?? 0).toLocaleString()} 字`, 'ok');
       else get().toast(`生成失败：${error ?? '未知错误'}${(wordCount ?? 0) > 0 ? '（已保留部分内容）' : ''}`, 'error');
