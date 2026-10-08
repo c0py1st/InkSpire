@@ -88,6 +88,19 @@ describe('世界书激活', () => {
     expect(loreBlockText(r.activated)).toBe('- 【ok】铃门规矩三条');
     expect(loreBlockText([])).toBe('');
   });
+
+  it('契约条分组：硬约束头置顶；无契约时输出与旧版逐字节一致', () => {
+    const c = E({ id: 'c', title: '雷纹剑真名', content: '提及必称「梓木」', contract: true });
+    const n = E({ id: 'n', title: '底色', content: '偃甲与剑并存', constant: true });
+    const out = loreBlockText([n, c]);
+    expect(out.startsWith('▲设定契约')).toBe(true);
+    expect(out).toContain('仅"不违背"不算完成');
+    expect(out.indexOf('- 【雷纹剑真名】')).toBeLessThan(out.indexOf('- 【底色】'));
+    // 全部是契约 → 只有契约组
+    expect(loreBlockText([c]).split('\n').filter((l) => l.startsWith('- '))).toHaveLength(1);
+    // 无契约 → 逐字节旧行为（子弹按原顺序，无分组头）
+    expect(loreBlockText([n, E({ id: 'm', title: '多', content: '条' })])).toBe('- 【底色】偃甲与剑并存\n- 【多】条');
+  });
 });
 
 describe('世界书消毒（落盘/前端输入绝不信任）', () => {

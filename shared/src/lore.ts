@@ -92,8 +92,22 @@ export function activateLore(args: {
 }
 
 /** 注入块文本：每行「- 【条名】内容」。空列表返回 ''（调用侧据此不出块） */
+/**
+ * 激活条目的注入排版。契约条与非契约条分级：
+ * - 有 contract 时单独分组置顶并带硬约束头——要求「主动落实」而非仅仅「不违背」
+ *   （实测教训：只标"不得违背"时，模型会让契约条件永不触发来绕开，如剑名条通篇不提剑名）；
+ * - 无 contract 时输出与旧版逐字节一致（零契约书的前缀缓存与行为不变）。
+ */
 export function loreBlockText(entries: LoreEntry[]): string {
-  return entries.map((e) => `- 【${e.title}】${e.content}`).join('\n');
+  const bullet = (e: LoreEntry): string => `- 【${e.title}】${e.content}`;
+  const contracts = entries.filter((e) => e.contract === true);
+  const others = entries.filter((e) => e.contract !== true);
+  const blocks: string[] = [];
+  if (contracts.length) {
+    blocks.push(`▲设定契约（本章正文必须主动落实，仅"不违背"不算完成：契约中的名物、称谓、道具须在其要求处出现在正文里）\n${contracts.map(bullet).join('\n')}`);
+  }
+  if (others.length) blocks.push(others.map(bullet).join('\n'));
+  return blocks.join('\n');
 }
 
 /* ---------------- 激活解释器（UI 测试器用；判定逻辑与 activateLore 严格同源） ---------------- */
