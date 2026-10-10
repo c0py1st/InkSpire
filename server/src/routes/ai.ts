@@ -254,9 +254,14 @@ async function runOneChapter(task: BgGenTask, item: QueueItem): Promise<ChapterR
       foreshadows: bundle.foreshadows,
       lorebook: loadLorebook(slug),
       exemplars: loadExemplars(slug),
+      recall: { slug, chapters },
     });
     if (ctx.loreTrace) {
       saveLoreActivated(slug, chapterId, ctx.loreTrace);
+    }
+    if (ctx.recallTrace) {
+      const rc = ctx.recallTrace.hits.reduce((a, h) => a + h.chars, 0);
+      console.error(`[moge:recall] ${chapterId} 词${ctx.recallTrace.terms} via=${ctx.recallTrace.via} 注入${ctx.recallTrace.hits.length}段/${rc}字: ${ctx.recallTrace.hits.map((h) => h.chapterId).join(',')}`);
     }
 
     const targetWords = getMeta(slug).wordsPerChapter ?? undefined;

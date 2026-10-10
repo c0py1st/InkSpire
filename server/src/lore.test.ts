@@ -4,12 +4,13 @@ import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { activateLore, contractMisses, contractTokens, explainLoreActivation, loreBlockText, loreKeyHit } from '../../shared/src/lore';
 import type { LoreEntry, Outline } from '../../shared/src/types';
-import { buildChapterContext } from './ai/memory';
-import { prosePrompt } from './ai/prompts/prose';
 
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'moge-lore-'));
 process.env.INKSPIRE_DATA_DIR = tmp;
+// config 会捕获 DATA_DIR，必须在设好 env 之后才加载任何间接依赖 config 的模块
 const { sanitizeLoreEntries, sanitizeStyleExemplars, saveLoreActivated, loadLoreActivated } = await import('./fs-store');
+const { buildChapterContext } = await import('./ai/memory');
+const { prosePrompt } = await import('./ai/prompts/prose');
 
 const E = (over: Partial<LoreEntry> & { id: string }): LoreEntry => ({
   title: over.title ?? over.id, keys: over.keys ?? [], content: over.content ?? '内容', ...over,

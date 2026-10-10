@@ -1,8 +1,9 @@
 import type {
-  ChapterBeat, CharacterCard, Foreshadow, LoreEntry, Outline, StyleExemplar, VolumeRecap,
+  ChapterBeat, ChapterFile, CharacterCard, Foreshadow, LoreEntry, Outline, StyleExemplar, VolumeRecap,
 } from '../../../shared/src/types';
 import { recapFingerprint, stateAtChapter } from '../../../shared/src/types';
 import { activateLore, loreBlockText } from '../../../shared/src/lore';
+import { extractTerms, recallForChapter } from './recall';
 import type { ChapterContext } from './prompts/prose';
 
 /**
@@ -135,6 +136,7 @@ export function buildChapterContext(args: {
   currentVolumeOnlyCast?: boolean;
   lorebook?: LoreEntry[];        // 世界书（命中激活注入；缺省/空 = 行为与此前完全一致）
   exemplars?: StyleExemplar[];   // 风格范文库（A2；同一激活引擎独立预算，缺省/空 = 逐字节旧行为）
+  recall?: { slug: string; chapters: ChapterFile[] };  // A3 前文召回（仅生成路径传入；缺省 = 逐字节旧行为）
 }): ChapterContext {
   const { outline, chapterId, characters } = args;
   const loc = locateChapter(outline, chapterId);
@@ -199,6 +201,20 @@ export function buildChapterContext(args: {
     }
   }
 
+  // A3 前文召回：仅在调用侧传入整书章文件时启用（生成路径）；任何异常吞掉=不注入，不拖垮上下文
+  let recall: string | undefined;
+  let recallTrace: ChapterContext['recallTrace'];
+  if (args.recall && args.recall.chapters.length) {
+    try {
+      const terms = extractTerms(loc.chapter.beat ?? '', [...names]);
+      const r = recallForChapter({
+        slug: args.recall.slug, outline, chapterId,
+        chapters: args.recall.chapters, terms,
+      });
+      if (r.text) { recall = r.text; recallTrace = { terms: r.terms, via: r.via, hits: r.hits }; }
+    } catch { /* 召回失败静默 */ }
+  }
+
   return {
     outline,
     chapter: loc.chapter,
@@ -214,6 +230,8 @@ export function buildChapterContext(args: {
     recentHooks,
     ...(lore ? { lore } : {}),
     ...(style ? { style } : {}),
+    ...(recall ? { recall } : {}),
+    ...(recallTrace ? { recallTrace } : {}),
     ...(loreTrace ? { loreTrace } : {}),
   };
 }
