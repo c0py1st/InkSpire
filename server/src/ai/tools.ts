@@ -194,23 +194,28 @@ function knownChapter(slug: string, chapterId: string): { title: string } | unde
   }
 }
 
-export function executeTool(slug: string, call: ToolCall): ToolOutcome {
+/** scope.chapterId = "只看本章"模式：检索限该章、越界读取拒绝、跨书信息工具出局 */
+export function executeTool(slug: string, call: ToolCall, scope?: { chapterId?: string }): ToolOutcome {
   const name = call.function.name;
   const policy = TOOL_POLICIES[name];
   if (!policy) return fail(`未知工具 ${name}`);
   const args = parseArgs(call);
   if (typeof args === 'string') return fail(args);
+  if (scope?.chapterId && (name === 'read_timeline' || name === 'read_foreshadow_list')) {
+    return fail('「只看本章」模式不查跨章信息（事件账本/伏笔表属全书），可请作者关闭该模式后再问');
+  }
 
   switch (name) {
     case 'search_chapters': {
       const q = str(args.query, 30);
       if (!q) return fail('query 不能为空');
-      const hits = searchChapters(slug, q);
-      if (!hits.length) return { ok: true, content: '没有命中。', detail: `搜「${q}」→ 0 处` };
+      let hits = searchChapters(slug, q);
+      if (scope?.chapterId) hits = hits.filter((h) => h.chapterId === scope.chapterId);
+      if (!hits.length) return { ok: true, content: scope?.chapterId ? '本章内没有命中。' : '没有命中。', detail: `搜「${q}」→ 0 处${scope?.chapterId ? '（限本章）' : ''}` };
       return {
         ok: true,
         content: cap(JSON.stringify(hits.map((h) => ({ 章: `${h.chapterId} ${h.chapterTitle}`, 上下文: h.snippet })))),
-        detail: `搜「${q}」→ ${hits.length} 处命中`,
+        detail: `搜「${q}」→ ${hits.length} 处命中${scope?.chapterId ? '（限本章）' : ''}`,
       };
     }
     case 'read_character_card': {
@@ -314,6 +319,9 @@ export function executeTool(slug: string, call: ToolCall): ToolOutcome {
       const cid = str(args.chapterId, 10) ?? '';
       const known = knownChapter(slug, cid);
       if (!known) return fail(`chapterId「${cid}」不在大纲中（形如 v01c003）`);
+      if (scope?.chapterId && cid !== scope.chapterId) {
+        return fail(`「只看本章」模式只许读当前章 ${scope.chapterId}，不能读 ${cid}`);
+      }
       const ch = readChapter(slug, cid);
       const outline = loadOutline(slug)!;
       const beat = locateChapter(outline, cid).chapter.beat;

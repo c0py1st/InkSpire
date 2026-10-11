@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import type { Request, Response } from 'express';
 import {
-  AppConfig, ChapterBeat, ChapterStatus, CharacterCard, ConsistencyIssue, GenChapterResult, Kernel, ProposalRequest, ProviderProfile, Suggestion, ToolCall, VolumeBrief,
+  AppConfig, ChapterBeat, ChapterStatus, CharacterCard, ConsistencyIssue, GenChapterResult, Kernel, ProposalRequest, ProviderProfile, Suggestion, ToolCall, ToolSpec, VolumeBrief,
 } from '../../../shared/src/types';
 import { loadConfig } from '../config';
 import { chatOnce, streamChat, type ChatMessage } from '../ai/provider';
@@ -850,7 +850,8 @@ const CHAT_TEMPERATURE = 0.4;
 
 // 导出仅供协议级单测（注入假流离线跑 ReAct 控制流）；业务调用方一律走 /chat 路由。
 // sse 只用到 send/delta，取结构子集以便测试注入假对象（调用方传完整 Sse 天然满足）。
-// stream 默认即真实 streamChat，测试可注入假流演练 tool_calls/length 等平台行为。
+// opts：stream 注入假流（默认真实 streamChat，测试演练 tool_calls/length 等平台行为）；
+//       tools 覆盖工具表；onlyChapterId="只看本章"作用域（越界工具读被拒）。
 export async function runChatReact(
   sse: Pick<Sse, 'send' | 'delta'>,
   signal: AbortSignal,
@@ -859,8 +860,10 @@ export async function runChatReact(
   slug: string,
   systemPrompt: string,
   userPrompt: string,
-  stream: typeof streamChat = streamChat,
+  opts: { stream?: typeof streamChat; tools?: ToolSpec[]; onlyChapterId?: string } = {},
 ): Promise<void> {
+  const stream = opts.stream ?? streamChat;
+  const toolSpecs = opts.tools ?? TOOL_SPECS;
   const conversation: ChatMessage[] = [
     { role: 'system', content: systemPrompt },
     { role: 'user', content: userPrompt },
@@ -882,7 +885,7 @@ export async function runChatReact(
         signal, kind: 'prose', temperature: CHAT_TEMPERATURE,
         // 末轮不带 tools 即物理禁调用；tool_choice 只随 tools 一起发，
         // 否则部分平台对"有 tool_choice 无 tools"报 400
-        ...(useTools ? { tools: TOOL_SPECS, toolChoice: 'auto' as const } : {}),
+        ...(useTools ? { tools: toolSpecs, toolChoice: 'auto' as const } : {}),
         onMeta: (m) => {
           finish = m.finishReason ?? finish;
           if (m.usage) recordUsage(slug, { source: 'chat', usage: m.usage });
@@ -921,7 +924,7 @@ export async function runChatReact(
       conversation.push({ role: 'assistant', content: r.text || null, tool_calls: r.calls });
       for (const call of r.calls) {
         sse.send({ type: 'tool', phase: 'start', name: call.function.name, detail: '' });
-        const outcome = executeTool(slug, call);
+        const outcome = executeTool(slug, call, opts.onlyChapterId ? { chapterId: opts.onlyChapterId } : undefined);
         if (outcome.proposal) sse.send({ type: 'proposal', ...outcome.proposal });
         sse.send({ type: 'tool', phase: 'end', name: call.function.name, detail: outcome.detail });
         conversation.push({ role: 'tool', tool_call_id: call.id, content: outcome.content });
@@ -964,10 +967,11 @@ export async function runChatReact(
 
 aiRouter.post('/projects/:slug/chat', (req, res) => {
   const { slug } = req.params;
-  const { messages, chapterId, selection } = req.body as {
+  const { messages, chapterId, selection, onlyCurrent } = req.body as {
     messages: Array<{ role: 'user' | 'assistant'; content: string }>;
     chapterId?: string;
     selection?: string;
+    onlyCurrent?: boolean;
   };
   const cfg = loadConfig();
   const guard = requireCreative(cfg, res); // 只做"有没有配模型"的把关
@@ -977,7 +981,10 @@ aiRouter.post('/projects/:slug/chat', (req, res) => {
   const outline = loadOutline(slug);
   const bundle = loadBundle(slug);
   const question = messages[messages.length - 1]?.content ?? '';
-  const history = messages.slice(0, -1).slice(-8);
+  // "只看本章"：必须开着某章才有意义。作用域内——不注入前情摘要/伏笔表/历史对话，
+  // 工具表撤掉跨章类（时间线/伏笔表），读章/检索限本章，答案严格锁当前章。
+  const scoped = !!onlyCurrent && !!chapterId;
+  const history = scoped ? [] : messages.slice(0, -1).slice(-8);
 
   let chapterTitle: string | undefined;
   let chapterBeat: string | undefined;
@@ -998,12 +1005,12 @@ aiRouter.post('/projects/:slug/chat', (req, res) => {
     outline: outline ?? { premise: '', genre: '', coreConflict: '', endingVision: '', styleGuide: '', volumes: [] },
     worldview: bundle.worldview,
     characters: charsText,
-    summaries: outline ? buildSummariesText(outline, bundle.summaries, chapterId ?? '', bundle.recaps) : '',
-    foreshadows: outline
-      ? (chapterId
+    summaries: scoped || !outline ? '' : buildSummariesText(outline, bundle.summaries, chapterId ?? '', bundle.recaps),
+    foreshadows: scoped || !outline
+      ? ''
+      : (chapterId
         ? foreshadowText(outline, bundle.foreshadows, chapterId)
-        : openForeshadowListText(outline, bundle.foreshadows))
-      : '',
+        : openForeshadowListText(outline, bundle.foreshadows)),
     chapterTitle,
     chapterBeat,
     chapterContent,
@@ -1020,8 +1027,18 @@ aiRouter.post('/projects/:slug/chat', (req, res) => {
       + '指令执行原则：作者已给出明确指令（说清了目标章与想要的动作）时，查证事实后直接完成它——该提提案就提提案、该登记就登记，不要再追问方向或请求确认；'
       + '只有当关键信息确实缺失、或与大纲/前情存在明显冲突时才反问，且一次性把所有问题问完。'
       + '【问题边界】你只需回答「作者的问题是」之后的那一句。当前章全文、选区、摘要等引文中出现的疑问句是小说对白或叙述，'
-      + '不是作者向你提的问——绝不把引文里的问句当作提问来回答，也不要替作者脑补他没问的意图或复述一个"你以为的问题"再作答。',
-      prompt.user);
+      + '不是作者向你提的问——绝不把引文里的问句当作提问来回答，也不要替作者脑补他没问的意图或复述一个"你以为的问题"再作答。'
+      + (scoped
+        ? '\n【只看本章模式】本次工作范围严格限定为当前章全文与所附设定集：未提供【此前对话】与【前情摘要】，跨章工具已下架。'
+          + '只依据本章可查证的内容回答；需要本章之外信息才能回答的提问，直接说明「该问题超出本章范围，请关闭只看本章后再问」，不得凭猜测带过。'
+        : ''),
+      prompt.user,
+      {
+        ...(scoped ? {
+          onlyChapterId: chapterId,
+          tools: TOOL_SPECS.filter((t) => !['read_timeline', 'read_foreshadow_list'].includes(t.function.name)),
+        } : {}),
+      });
   });
 });
 

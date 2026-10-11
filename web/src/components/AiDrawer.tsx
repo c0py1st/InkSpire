@@ -49,6 +49,8 @@ export function AiDrawer() {
   const [messages, setMessages] = useState<ChatMessageRecord[]>([]);
   const [input, setInput] = useState('');
   const [chatBusy, setChatBusy] = useState(false);
+  // A 方案「只看本章」：仅当打开了某章时生效——回答严格锁当前章，不带对话史/前情，工具也只查本章
+  const [onlyCurrent, setOnlyCurrent] = useState(false);
   const chatCtlRef = useRef<AbortController | null>(null);
   // 切书加载完成前不回写，避免把上一本书的尾部消息存进新书
   const chatHydratedRef = useRef<string | null>(null);
@@ -185,6 +187,7 @@ export function AiDrawer() {
         messages: history,
         chapterId: chapter?.id,
         selection: selection?.text,
+        onlyCurrent: onlyCurrent && !!chapter,
       }, (delta) => {
         patchLast((m) => ({ content: m.content + delta }));
         scrollBottom();
@@ -505,7 +508,11 @@ export function AiDrawer() {
               }}
             />
             <div className="hint">
-              <span>{chapter ? '上下文：当前章节 + 设定集 + 前情摘要' : '上下文：全书设定'}</span>
+              <label className={`wn-toggle${chapter ? '' : ' dis'}`} style={{ margin: 0, gap: 5 }} title="打开后回答严格锁在当前章：不带此前对话与前情摘要，查书工具也只许查本章；问跨章的事再回来打开全书">
+                <input type="checkbox" checked={onlyCurrent && !!chapter} disabled={!chapter} onChange={(e) => setOnlyCurrent(e.target.checked)} />
+                只看本章
+              </label>
+              <span>{chapter ? (onlyCurrent ? '上下文：仅当前章（无对话史与前情）' : '上下文：当前章节 + 设定集 + 前情摘要') : '上下文：全书设定'}</span>
               <span style={{ flex: 1 }} />
               {messages.length > 0 && !chatBusy && (
                 <Btn small ghost onClick={() => void clearChat()} title="清空本书对话记录（不影响正文与设定）">清空</Btn>

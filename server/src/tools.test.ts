@@ -171,3 +171,24 @@ describe('read_lorebook', () => {
     expect(executeTool(SLUG, call('read_lorebook', { chapterId: '乱码章' })).ok).toBe(false);
   });
 });
+
+describe('executeTool「只看本章」作用域', () => {
+  const scope = { chapterId: 'v01c001' };
+  it('search_chapters：命中只限本章', () => {
+    const hit = executeTool(SLUG, call('search_chapters', { query: '甲刀' }), scope);
+    expect(hit.ok).toBe(true);
+    expect(hit.detail).toContain('限本章');
+    const miss = executeTool(SLUG, call('search_chapters', { query: '甲刀' }), { chapterId: 'v01c002' });
+    expect(miss.ok).toBe(true);
+    expect(miss.content).toContain('本章内没有命中');
+  });
+  it('read_chapter：越界章拒绝，本章放行', () => {
+    expect(executeTool(SLUG, call('read_chapter', { chapterId: 'v01c002' }), scope).ok).toBe(false);
+    expect(executeTool(SLUG, call('read_chapter', { chapterId: 'v01c001' }), scope).ok).toBe(true);
+  });
+  it('时间线/伏笔表在作用域内直接出局；无作用域时正常', () => {
+    expect(executeTool(SLUG, call('read_timeline', {}), scope).ok).toBe(false);
+    expect(executeTool(SLUG, call('read_foreshadow_list', {}), scope).ok).toBe(false);
+    expect(executeTool(SLUG, call('read_timeline', {})).ok).toBe(true);
+  });
+});

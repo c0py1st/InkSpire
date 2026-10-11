@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import type { AppConfig, ProviderProfile, ToolCall } from '../../shared/src/types';
+import type { AppConfig, ProviderProfile, ToolCall, ToolSpec } from '../../shared/src/types';
 import type { ChatMessage, StreamOptions, streamChat } from './ai/provider';
 
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'moge-chat-'));
@@ -27,11 +27,11 @@ function fakeSse() {
 interface Round { text?: string; finish?: string; calls?: ToolCall[]; throws?: string }
 /** 脚本化假流：按轮回放，并记录每轮请求里是否带了 tools、消息快照长什么样 */
 function scripted(...rounds: Round[]) {
-  const seen: Array<{ withTools: boolean; msgs: ChatMessage[] }> = [];
+  const seen: Array<{ withTools: boolean; toolNames: string[]; msgs: ChatMessage[] }> = [];
   let i = 0;
   const fake: typeof streamChat = async function* (_c, _p, messages, opts: StreamOptions = {}) {
     const r = rounds[i++] ?? { text: '', finish: 'stop' };
-    seen.push({ withTools: Array.isArray(opts.tools) && opts.tools.length > 0, msgs: [...messages] });
+    seen.push({ withTools: Array.isArray(opts.tools) && opts.tools.length > 0, toolNames: (opts.tools ?? []).map((t) => t.function.name), msgs: [...messages] });
     if (r.throws) throw new Error(r.throws);
     if (r.text) yield r.text;
     if (r.calls?.length) opts.onToolCalls?.(r.calls);
@@ -41,8 +41,8 @@ function scripted(...rounds: Round[]) {
 }
 
 const call: ToolCall = { id: 't1', type: 'function', function: { name: 'search_chapters', arguments: '{"query":"测试"}' } };
-const go = (sse: ReturnType<typeof fakeSse>, st: ReturnType<typeof scripted>) =>
-  runChatReact(sse, new AbortController().signal, cfg, profile, '对话测试书', 'sys', '作者的问题是：X', st);
+const go = (sse: ReturnType<typeof fakeSse>, st: ReturnType<typeof scripted>, extra?: { onlyChapterId?: string; tools?: ToolSpec[] }) =>
+  runChatReact(sse, new AbortController().signal, cfg, profile, '对话测试书', 'sys', '作者的问题是：X', { stream: st, ...extra });
 
 describe('侧边对话 ReAct 控制流（假流协议测）', () => {
   it('单轮直接回答：缓冲后一次落泡，不重复投喂', async () => {
@@ -119,8 +119,23 @@ describe('侧边对话 ReAct 控制流（假流协议测）', () => {
       yield '答案';
       opts.onMeta?.({ finishReason: 'stop' });
     };
-    await runChatReact(sse, new AbortController().signal, cfg, profile, '对话测试书', 'sys', 'X', fake);
+    await runChatReact(sse, new AbortController().signal, cfg, profile, '对话测试书', 'sys', 'X', { stream: fake });
     expect(temps.length).toBeGreaterThan(0);
     expect(temps.every((t) => t === 0.4)).toBe(true);
+  });
+
+  it('「只看本章」转发：模型收到的工具表=裁剪后清单，工具执行带本章作用域', async () => {
+    const sse = fakeSse();
+    const spec = { type: 'function' as const, function: { name: 'search_chapters', description: '', parameters: {} } };
+    const st = scripted(
+      { text: '让我先查查。', finish: 'tool_calls', calls: [call] },
+      { text: '本章无。', finish: 'stop' },
+    );
+    await go(sse, st, { tools: [spec], onlyChapterId: 'v01c009' });
+    expect(st.seen()[0].toolNames).toEqual(['search_chapters']); // 交给模型的工具表已被路由裁剪
+    const toolMsg = st.seen()[1].msgs.find((m) => m.role === 'tool');
+    expect(String(toolMsg?.content)).toContain('本章内没有命中'); // 检索确实限了本章
+    expect(sse.answer()).toBe('本章无。');
+    expect(sse.events.filter((e) => e.type === 'note')).toHaveLength(1); // 旁白仍进轨迹
   });
 });
