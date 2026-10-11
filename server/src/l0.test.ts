@@ -58,6 +58,7 @@ describe('L0 纯检查器', () => {
 
 describe('L0 报告缓存（.index 可重建层）', () => {
   const slug = 'l0book';
+  fs.mkdirSync(path.join(tmp, slug), { recursive: true }); // 真实书目录在场（.index 写只跟随已有书，不复活幽灵）
 
   it('消毒：非法条目丢弃、合法保留', () => {
     const s = sanitizeL0Report({

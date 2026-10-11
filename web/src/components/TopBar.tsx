@@ -36,7 +36,7 @@ export function TopBar() {
           <button className="btn ghost small" onClick={() => setView('bible')} title="设定集">设定</button>
           <button className="btn ghost small" onClick={() => setView('read')} title="通读模式：全书正文连续连排，可搜索高亮逐条跳转">通读</button>
           <button className="btn ghost small" onClick={() => setView('timeline')} title="世界事件时间线：按章序的大事账本，可过滤参与人物">时间线</button>
-          <button className="btn ghost small" onClick={() => setView('health')} title="体检面板：进度 / 伏笔 / 出场 / L0 预检 / 模型用量">体检</button>
+          <button className="btn ghost small" onClick={() => setView('health')} title="体检面板：进度 / 伏笔 / 出场 / L0 预检 / 召回留痕 / 模型用量">体检</button>
           <button className="btn ghost small" onClick={() => setFocus(!focusMode)} title="专注模式（隐藏两侧）">
             {focusMode ? '退出专注' : '专注'}
           </button>

@@ -19,8 +19,8 @@ import { chatPrompt } from '../ai/prompts/chat';
 import { summaryPrompt } from '../ai/prompts/summary';
 import { consistencyPrompt } from '../ai/prompts/consistency';
 import {
-  getMeta, listChapters, loadBundle, loadEvents, loadExemplars, loadLorebook, loadOutline, loadRecaps, loadSummaries, loadSuggestions, mergeChapterAutoEvents, readChapter,
-  saveChapterBody, saveEvents, saveLoreActivated, saveOutline, saveRecaps, saveSuggestions, saveSummaries,
+  getMeta, listChapters, loadBundle, loadEvents, loadExemplars, loadLorebook, loadOutline, loadRecaps, loadRecallActivated, loadSummaries, loadSuggestions, mergeChapterAutoEvents, readChapter,
+  saveChapterBody, saveEvents, saveLoreActivated, saveOutline, saveRecaps, saveRecallActivated, saveSuggestions, saveSummaries,
 } from '../fs-store';
 import { recapFingerprint, stateAtChapter } from '../../../shared/src/types';
 import { loadCacheStats, recordUsage } from '../cache-stats';
@@ -268,7 +268,8 @@ async function runOneChapter(task: BgGenTask, item: QueueItem): Promise<ChapterR
     }
     if (ctx.recallTrace) {
       const rc = ctx.recallTrace.hits.reduce((a, h) => a + h.chars, 0);
-      console.error(`[moge:recall] ${chapterId} 词${ctx.recallTrace.terms} via=${ctx.recallTrace.via} 注入${ctx.recallTrace.hits.length}段/${rc}字: ${ctx.recallTrace.hits.map((h) => h.chapterId).join(',')}`);
+      console.error(`[moge:recall] ${chapterId} 漏 ${ctx.recallTrace.terms} 词 via=${ctx.recallTrace.via} 注入${ctx.recallTrace.hits.length}段/${rc}字: ${ctx.recallTrace.hits.map((h) => h.chapterId).join(',')}`);
+      saveRecallActivated(slug, chapterId, ctx.recallTrace);
     }
 
     const targetWords = getMeta(slug).wordsPerChapter ?? undefined;
@@ -788,6 +789,7 @@ aiRouter.get('/projects/:slug/health', (req, res) => {
       bodies: listChapters(slug).map((c) => ({ id: c.id, content: c.content })),
       l0: loadL0Report(slug),
       usage: loadCacheStats(slug),
+      recall: loadRecallActivated(slug),
     }));
   } catch (err) {
     res.status(400).json({ error: (err as Error).message });

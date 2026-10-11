@@ -5,7 +5,7 @@ import { useStore } from '../state/store';
 import { Btn } from './primitives';
 
 /**
- * 体检面板：全书进度 / 伏笔账 / 人物出场 / L0 预检 / 模型用量。
+ * 体检面板：全书进度 / 伏笔账 / 人物出场 / L0 预检 / 召回留痕 / 模型用量。
  * 数据全部来自 GET /health（纯统计 + .index 缓存，零模型调用），
  * 「重跑 L0」是唯一主动动作（纯代码，不花钱）。
  * 例外：网文模式下的「黄金三章评审」会主动调一次模型（按钮明示）。
@@ -180,6 +180,33 @@ export function HealthView() {
                   <span className="hk-tag">出场 {a.chapters} 章{a.stateNodes ? ` · 状态 ${a.stateNodes} 节点` : ''}</span>
                 </div>
               ))}
+            </Section>
+
+            {/* 检索反哺·召回留痕（A3）：每章最近一次生成从旧文捞回了什么——看不见的智能=黑箱 */}
+            <Section
+              title={`检索反哺 · 召回留痕${rep.recall.chapters ? `（${rep.recall.chapters} 章有生成记录）` : ''}`}
+              tone={rep.recall.scanChapters ? 'warn' : undefined}
+              right={<span className="hk-counts">有召回 {rep.recall.withHits} 章{rep.recall.scanChapters ? ` · 降级 ${rep.recall.scanChapters} 章` : ''}</span>}
+            >
+              {rep.recall.chapters === 0 && <div className="pane-sub" style={{ padding: '6px 0' }}>还没有召回记录——生成一章后，那次生成实际注入的旧文片段会留在这里（缓存可删，删了只丢历史）。</div>}
+              {rep.recall.items.map((r) => {
+                const byTitle = new Map<string, { n: number; chars: number }>();
+                for (const h of r.hits) {
+                  const agg = byTitle.get(h.title) ?? { n: 0, chars: 0 };
+                  agg.n++; agg.chars += h.chars;
+                  byTitle.set(h.title, agg);
+                }
+                return (
+                  <div key={r.chapterId} className="hk-row" style={{ cursor: 'default' }} title={`查询词 ${r.terms} 个 · 通道 ${r.via === 'scan' ? '全量扫描降级（本机 node:sqlite 不可用）' : 'FTS5 索引'}`}>
+                    <span className="hk-main">写《{r.title}》时</span>
+                    <span className="hk-tag">
+                      {r.hits.length === 0
+                        ? '未召回相关旧文'
+                        : `召回 ${r.hits.reduce((a, h) => a + h.chars, 0)} 字：${[...byTitle].map(([t, a]) => `《${t}》${a.n > 1 ? `×${a.n}` : ''}（${a.chars}字）`).join('、')}`}
+                    </span>
+                  </div>
+                );
+              })}
             </Section>
 
             {/* 模型用量 */}

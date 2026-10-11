@@ -3,7 +3,7 @@ import path from 'node:path';
 import YAML from 'yaml';
 import {
   Bundle, ChapterFile, ChapterStatus, CharacterCard, ChatMessageRecord, ChatProposalRecord, ChatStepRecord,
-  Foreshadow, LoreEntry, LoreTraceEntry, LoreTraceItem, Outline, ProjectMeta, StoryEvent, StyleExemplar, Suggestion, VolumeRecap,
+  Foreshadow, LoreEntry, LoreTraceEntry, LoreTraceItem, Outline, ProjectMeta, RecallTraceEntry, StoryEvent, StyleExemplar, Suggestion, VolumeRecap,
 } from '../../shared/src/types';
 import { countChars } from '../../shared/src/util';
 import { DATA_DIR } from './config';
@@ -39,7 +39,7 @@ export function indexFile(slug: string, name: string): string {
 }
 
 export function writeIndexJson(slug: string, name: string, obj: unknown): void {
-  writeJson(indexFile(slug, name), obj);
+  writeJsonIfBook(projectDir(slug), indexFile(slug, name), obj);
 }
 
 export function readIndexJsonRaw(slug: string, name: string): unknown {
@@ -55,6 +55,14 @@ function writeJson(file: string, obj: unknown): void {
   const tmp = file + '.tmp';
   fs.writeFileSync(tmp, JSON.stringify(obj, null, 2), 'utf8');
   fs.renameSync(tmp, file);
+}
+
+/** 附属/缓存写（chat.json、.index/*）专用：书目录不存在就跳过——
+ *  writeJson 会自动 mkdir，删除作品后被忘掉的客户端防抖保存/在途生成回写会把书目录凭空复活成幽灵目录 */
+function writeJsonIfBook(dir: string, file: string, obj: unknown): boolean {
+  if (!fs.existsSync(dir)) return false;
+  writeJson(file, obj);
+  return true;
 }
 
 function atomicWriteText(file: string, text: string): void {
@@ -386,11 +394,40 @@ export function saveLoreActivated(slug: string, chapterId: string, trace: {
   if (ids.length > LORE_TRACE_MAX_CHAPTERS) {
     for (const id of ids.sort().slice(0, ids.length - LORE_TRACE_MAX_CHAPTERS)) delete store[id];
   }
-  writeJson(file, store);
+  writeJsonIfBook(projectDir(slug), file, store);
 }
 
 export function loadLoreActivated(slug: string): Record<string, LoreTraceEntry> {
   return (readJson<Record<string, unknown>>(indexFile(slug, 'lore-activated.json'), {}) ?? {}) as Record<string, LoreTraceEntry>;
+}
+
+/* ---- 检索反哺留痕（.index/recall-activated.json，可重建缓存）：每章最近一次生成的召回实况 ---- */
+
+const RECALL_TRACE_MAX_CHAPTERS = 300;
+
+/** 只记摘要字段（条数/通道/命中章与字数），删缓存零损失；写侧消毒：形状与上限都收紧 */
+export function saveRecallActivated(slug: string, chapterId: string, trace: { terms: number; via: string; hits: Array<{ chapterId: string; title: string; chars: number }> }): void {
+  const file = indexFile(slug, 'recall-activated.json');
+  const store = (readJson<Record<string, unknown>>(file, {}) ?? {}) as Record<string, RecallTraceEntry>;
+  store[chapterId] = {
+    terms: Math.max(0, Math.min(99, Math.round(Number(trace.terms)) || 0)),
+    via: trace.via === 'scan' ? 'scan' : 'fts',
+    hits: (Array.isArray(trace.hits) ? trace.hits : []).slice(0, 8).map((h) => ({
+      chapterId: String(h?.chapterId ?? '').slice(0, 20),
+      title: String(h?.title ?? '').slice(0, 40),
+      chars: Math.max(0, Math.round(Number(h?.chars)) || 0),
+    })),
+    at: new Date().toISOString(),
+  };
+  const ids = Object.keys(store);
+  if (ids.length > RECALL_TRACE_MAX_CHAPTERS) {
+    for (const id of ids.sort().slice(0, ids.length - RECALL_TRACE_MAX_CHAPTERS)) delete store[id];
+  }
+  writeJsonIfBook(projectDir(slug), file, store);
+}
+
+export function loadRecallActivated(slug: string): Record<string, RecallTraceEntry> {
+  return (readJson<Record<string, unknown>>(indexFile(slug, 'recall-activated.json'), {}) ?? {}) as Record<string, RecallTraceEntry>;
 }
 
 /* ---------------- 风格范文库（exemplars.json，真相源） ---------------- */
@@ -503,7 +540,7 @@ export function loadChat(slug: string): ChatMessageRecord[] {
 
 export function saveChat(slug: string, messages: unknown): ChatMessageRecord[] {
   const clean = sanitizeChatRecords(messages);
-  writeJson(jfile(slug, 'chat.json'), clean);
+  writeJsonIfBook(projectDir(slug), jfile(slug, 'chat.json'), clean);
   return clean;
 }
 

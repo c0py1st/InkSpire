@@ -7,6 +7,7 @@ import type { ChapterFile, Outline } from '../../shared/src/types';
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'moge-recall-'));
 process.env.INKSPIRE_DATA_DIR = tmp;
 const { splitParagraphs, extractTerms, recallForChapter, recallAvailable } = await import('./ai/recall');
+const { saveRecallActivated, loadRecallActivated } = await import('./fs-store');
 const { buildChapterContext } = await import('./ai/memory');
 const { prosePrompt } = await import('./ai/prompts/prose');
 
@@ -114,5 +115,25 @@ describe('A3 生成链挂接', () => {
     const user = prosePrompt(ctx).user;
     expect(user).toContain('【前文相关片段');
     expect(user).toContain('《渡夜》');
+  });
+});
+
+describe('召回留痕落盘（.index/recall-activated.json）', () => {
+  it('写入→读回；via 白名单、terms/hits 收敛、同章覆盖只留最近', () => {
+    fs.mkdirSync(path.join(tmp, '留痕书'), { recursive: true }); // 留痕守卫只写已存在的书
+    saveRecallActivated('留痕书', 'v01c003', {
+      terms: 250, via: 'weird',
+      hits: Array.from({ length: 12 }, (_, i) => ({ chapterId: `v01c0${i + 1}`, title: `章${i}`, chars: 100 + i })),
+    });
+    saveRecallActivated('留痕书', 'v01c005', { terms: 8, via: 'scan', hits: [{ chapterId: 'v01c002', title: '乙', chars: 50 }] });
+    const all = loadRecallActivated('留痕书');
+    expect(Object.keys(all).sort()).toEqual(['v01c003', 'v01c005']);
+    expect(all.v01c003.terms).toBe(99);            // terms 封顶 99
+    expect(all.v01c003.via).toBe('fts');           // 非 scan 一律归 fts
+    expect(all.v01c003.hits).toHaveLength(8);      // hits 封顶 8
+    expect(all.v01c005.via).toBe('scan');
+    saveRecallActivated('留痕书', 'v01c005', { terms: 3, via: 'fts', hits: [] });
+    expect(loadRecallActivated('留痕书').v01c005.hits).toHaveLength(0);
+    expect(loadRecallActivated('未说明书')).toEqual({});
   });
 });

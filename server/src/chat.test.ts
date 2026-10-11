@@ -1,5 +1,18 @@
 import { describe, expect, it } from 'vitest';
-import { CHAT_MAX_MESSAGES, sanitizeChatRecords, sanitizeRecaps } from './fs-store';
+import fs from 'node:fs';
+import path from 'node:path';
+import { CHAT_MAX_MESSAGES, loadChat, saveChat, sanitizeChatRecords, sanitizeRecaps } from './fs-store';
+import { DATA_DIR } from './config';
+
+describe('删书后附属写不复活（幽灵目录守卫）', () => {
+  it('saveChat 对不存在的路径静默跳过，连目录都不建；loadChat 恒空', () => {
+    const ghost = '幽灵守卫书';
+    const n = saveChat(ghost, [{ role: 'user', content: 'x', at: '' }]);
+    expect(n).toHaveLength(1); // 消毒照常返回（调用侧无感），但不落盘
+    expect(fs.existsSync(path.join(DATA_DIR, ghost))).toBe(false);
+    expect(loadChat(ghost)).toEqual([]);
+  });
+});
 
 describe('sanitizeChatRecords（对话落盘消毒）', () => {
   it('非数组一律空', () => {

@@ -36,6 +36,20 @@ describe('buildHealthReport', () => {
     expect(h.progress).toEqual({ total: 3, archived: 2, totalWords: 11 + 13 });
   });
 
+  it('召回留痕：无缓存=空节；有缓存按章序聚合、scan 计数', () => {
+    expect(buildHealthReport(base).recall).toEqual({ chapters: 0, withHits: 0, scanChapters: 0, items: [] });
+    const h = buildHealthReport({ ...base, recall: {
+      v01c002: { terms: 12, via: 'fts', hits: [{ chapterId: 'v01c001', title: '第一章', chars: 200 }], at: '' },
+      v01c003: { terms: 9, via: 'scan', hits: [], at: '' },
+      v01c001: { terms: 3, via: 'fts', hits: [{ chapterId: 'v00c000', title: '幽灵', chars: 50 }], at: '' },
+    } });
+    expect(h.recall.chapters).toBe(3);
+    expect(h.recall.withHits).toBe(2);
+    expect(h.recall.scanChapters).toBe(1);
+    expect(h.recall.items.map((i) => i.chapterId)).toEqual(['v01c001', 'v01c002', 'v01c003']); // 按章序
+    expect(h.recall.items[1].hits[0].title).toBe('第一章');
+  });
+
   it('伏笔：回收章已越过进度的 open 计为逾期；未定/未到/已收不算', () => {
     const h = buildHealthReport({ ...base, foreshadows: [
       f_({ id: 'a', payoffChapterId: 'v01c002' }),          // 已到回收章且已归档 → 逾期

@@ -180,6 +180,15 @@ export interface LoreTraceEntry {
   at: string;
 }
 
+/** 检索反哺留痕的一条（.index/recall-activated.json，可重建缓存，与 lore-activated 同纪律）：
+ *  该章最近一次生成的召回实况——via=scan 即 sqlite 降级路径 */
+export interface RecallTraceEntry {
+  terms: number;
+  via: 'fts' | 'scan';
+  hits: Array<{ chapterId: string; title: string; chars: number }>;
+  at: string;
+}
+
 /** 采纳大纲修订建议：把 content 写回 sourceChapterId 章的 beat。命中返回 true（就地修改传入的 outline） */
 export function applyOutlineSuggestion(outline: Outline, sug: Suggestion): boolean {
   if (!sug.sourceChapterId) return false;
@@ -415,6 +424,13 @@ export interface HealthReport {
   usage: CacheStats;
   /** 网文节奏分析（E3）：始终计算，UI 仅在 webnovelMode 下展示 */
   pacing: WebnovelPacing;
+  /** 检索反哺·召回留痕（A3 可观测）：各章最近一次生成实际捞回了什么 */
+  recall: {
+    chapters: number;
+    withHits: number;
+    scanChapters: number;
+    items: Array<{ chapterId: string; title: string; via: 'fts' | 'scan'; terms: number; hits: Array<{ chapterId: string; title: string; chars: number }> }>;
+  };
 }
 
 /** 一段"爽点断档"：从 fromTitle 到 toTitle 连续 length 章没标爽点 */

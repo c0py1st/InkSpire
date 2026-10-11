@@ -214,7 +214,9 @@ export function buildChapterContext(args: {
         slug: args.recall.slug, outline, chapterId,
         chapters: args.recall.chapters, terms,
       });
-      if (r.text) { recall = r.text; recallTrace = { terms: r.terms, via: r.via, hits: r.hits }; }
+      if (r.text) recall = r.text;
+      // 留痕照记无误：零命中也要如实显示"这次生成没捞回东西"，可观测才有信任
+      recallTrace = { terms: r.terms, via: r.via, hits: r.hits };
     } catch { /* 召回失败静默 */ }
   }
 

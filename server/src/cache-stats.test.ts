@@ -66,6 +66,7 @@ describe('sanitizeCacheStats', () => {
 
 describe('recordUsage / loadCacheStats 落盘往返', () => {
   const slug = 'book-a';
+  fs.mkdirSync(path.join(tmp, slug, '.index'), { recursive: true }); // 真实书目录在场：缓存写只跟随已有书，不复活幽灵
 
   it('记录两次 → 累计、按来源分桶、recent 最新在前', () => {
     const ok1 = recordUsage(slug, { source: 'prose', chapterId: 'v01c001', usage: { prompt_tokens: 1000, prompt_cache_hit_tokens: 0, prompt_cache_miss_tokens: 1000 } });

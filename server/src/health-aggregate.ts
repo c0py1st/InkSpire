@@ -1,4 +1,4 @@
-import type { CacheStats, CharacterCard, Foreshadow, HealthReport, Outline, PacingDryRun, WebnovelPacing } from '../../shared/src/types';
+import type { CacheStats, CharacterCard, Foreshadow, HealthReport, Outline, PacingDryRun, RecallTraceEntry, WebnovelPacing } from '../../shared/src/types';
 import type { L0Report } from './l0-report';
 import { countChars } from '../../shared/src/util';
 
@@ -16,6 +16,8 @@ export interface HealthInput {
   bodies: Array<{ id: string; content: string }>;
   l0: L0Report;
   usage: CacheStats;
+  /** 检索反哺留痕（.index 缓存；缺省 = 空表，老数据零影响） */
+  recall?: Record<string, RecallTraceEntry>;
 }
 
 /**
@@ -97,6 +99,19 @@ export function buildHealthReport(input: HealthInput): HealthReport {
   }
   l0Agg.chapters.sort((a, b) => (a.high !== b.high ? b.high - a.high : (b.medium + b.low) - (a.medium + a.low)));
 
+  const recallAgg: HealthReport['recall'] = { chapters: 0, withHits: 0, scanChapters: 0, items: [] };
+  for (const [cid, e] of Object.entries(input.recall ?? {})) {
+    if (!e || !Array.isArray(e.hits)) continue;
+    recallAgg.chapters++;
+    if (e.via === 'scan') recallAgg.scanChapters++;
+    if (e.hits.length) recallAgg.withHits++;
+    recallAgg.items.push({
+      chapterId: cid, title: titleOf.get(cid) ?? cid, via: e.via === 'scan' ? 'scan' : 'fts',
+      terms: e.terms, hits: e.hits.slice(0, 8),
+    });
+  }
+  recallAgg.items.sort((a, b) => a.chapterId.localeCompare(b.chapterId));
+
   return {
     progress: { total: order.length, archived, totalWords },
     foreshadow: { open, resolved, abandoned, overdue },
@@ -104,5 +119,6 @@ export function buildHealthReport(input: HealthInput): HealthReport {
     l0: l0Agg,
     usage,
     pacing: analyzePacing(outline),
+    recall: recallAgg,
   };
 }

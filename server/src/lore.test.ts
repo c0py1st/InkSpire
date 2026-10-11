@@ -162,6 +162,7 @@ describe('契约名物自检（contractTokens / contractMisses）', () => {
 });
 
 describe('激活留痕缓存', () => {
+  fs.mkdirSync(path.join(tmp, '测试留痕'), { recursive: true }); // 留痕守卫：只写已存在的书（与真实语义一致）
   it('按章覆盖写；只留 id/标题/字数；style 段可选并入', () => {
     saveLoreActivated('测试留痕', 'v01c001', { activated: [E({ id: 'a', title: '甲', content: 'xxx' })], dropped: [] });
     saveLoreActivated('测试留痕', 'v01c001', {
