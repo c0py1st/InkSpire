@@ -246,13 +246,13 @@ export function OutlineView() {
                   <button className="icon-btn danger" title="从大纲中移除（正文文件保留）" onClick={() => removeChapter(vi, ci)}>✕</button>
                 </div>
                 <textarea
-                  className="beat" placeholder="本章 beat：会发生什么（agent 严格照此执行）"
+                  className="beat" placeholder="本章 beat：会发生什么。用具体名物锚定（道具名/地名/身体印记/原话），别写「一件旧物/某个秘密」这类泛称——后续章节按字面检索旧文才捞得回。agent 严格照此执行"
                   value={c.beat}
                   onChange={(e) => mutateVolumes((vs) => { vs[vi].chapters[ci] = { ...c, beat: e.target.value }; return vs; }, false)}
                   onBlur={(e) => mutateVolumes((vs) => { vs[vi].chapters[ci] = { ...c, beat: e.target.value }; return vs; })}
                 />
                 <textarea
-                  className="beat" style={{ minHeight: 44, marginTop: 6 }} placeholder="场景推进（可选，一行一个，建议 2~4 个；生成时按序逐场景写足）"
+                  className="beat" style={{ minHeight: 44, marginTop: 6 }} placeholder="场景推进（可选，一行一个，建议 2~4 个；生成时按序逐场景写足。锚词同上：越具体，召回越准）"
                   value={(c.scenes ?? []).join('\n')}
                   onChange={(e) => mutateVolumes((vs) => { vs[vi].chapters[ci] = { ...c, scenes: e.target.value.split('\n') }; return vs; }, false)}
                   onBlur={(e) => mutateVolumes((vs) => { const arr = e.target.value.split('\n').map((s) => s.trim()).filter(Boolean); vs[vi].chapters[ci] = { ...c, scenes: arr.length ? arr : undefined }; return vs; })}

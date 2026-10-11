@@ -98,11 +98,15 @@ export function AiDrawer() {
 
   async function clearChat() {
     if (!slug) return;
-    if (!await useStore.getState().confirmAsk('清空本书的全部对话记录？（不影响正文、摘要与伏笔表）', { title: '清空对话', okLabel: '清空' })) return;
-    setMessages([]);
+    // 粒度与视图对称：只看本章时「清空」只清本章往来，全书视图才清全部
+    const scopedNow = onlyCurrent && !!chapter;
+    const tip = scopedNow ? `清空《${chapter!.title}》本章的对话记录？（其他章的对话不受影响）` : '清空本书的全部对话记录？（不影响正文、摘要与伏笔表）';
+    if (!await useStore.getState().confirmAsk(tip, { title: '清空对话', okLabel: '清空' })) return;
+    const rest = scopedNow ? messages.filter((m) => m.chapterId !== chapter!.id) : [];
+    setMessages(rest);
     chatHydratedRef.current = slug;
     try {
-      await api.saveChat(slug, []);
+      await api.saveChat(slug, rest);
     } catch { /* ignore */ }
   }
 
@@ -399,7 +403,14 @@ export function AiDrawer() {
             )}
             {visibleMessages.map((m, i) => (
               <div key={i} className={`msg ${m.role}`}>
-                <div className="who">{m.role === 'user' ? '你' : '编辑'}</div>
+                <div className="who">
+                  {m.role === 'user' ? '你' : '编辑'}
+                  {!onlyCurrent && m.chapterId && (() => {
+                    const cid = m.chapterId;
+                    const t = bundle?.outline?.volumes.flatMap((v) => v.chapters).find((c) => c.id === cid)?.title;
+                    return <span className="msg-ch" title={`该对话发生于：${t ?? cid}`}>{t ?? cid}</span>;
+                  })()}
+                </div>
                 {m.steps?.length ? (
                   <div className="agent-steps">
                     {m.steps.map((s, k) => (
@@ -530,7 +541,7 @@ export function AiDrawer() {
               <span>{chapter ? (onlyCurrent ? '当前章对话 · 跨章问题请关闭后询问' : '上下文：当前章节 + 设定集 + 前情摘要') : '上下文：全书设定（打开一章后可限定本章）'}</span>
               <span style={{ flex: 1 }} />
               {messages.length > 0 && !chatBusy && (
-                <Btn small ghost onClick={() => void clearChat()} title="清空本书对话记录（不影响正文与设定）">清空</Btn>
+                <Btn small ghost onClick={() => void clearChat()} title={onlyCurrent && chapter ? '清空本章对话记录（其他章不受影响）' : '清空本书对话记录（不影响正文与设定）'}>清空</Btn>
               )}
               {chatBusy
                 ? <Btn small danger onClick={stopChat} title="中断本轮回答与工具调用">停止</Btn>
