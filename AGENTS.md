@@ -88,7 +88,13 @@
     esbuild 服务端单文件 + node.exe/前端 dist 作 Tauri 资源随行；Rust 壳只做
     起子进程→健康等待→开窗→Job(KILL_ON_JOB_CLOSE) 防孤儿；固定端口 47821；INKSPIRE_HOME 便携模式；
     NSIS 安装器 43.9MB：静默安装→安装版实测（API/SPA 200、%APPDATA% 数据、硬杀零残留）→已卸载还原
-  - [下一站] 可选：A3 FTS5 检索反哺生成 prompt（调研清单遗留的最后一项能力层）
+  - [完成] A3 FTS5 检索反哺：段落级 recall.sqlite（trigram+2字LIKE兜底+sha1增量+损坏自愈）+
+    beat 词抽取（人名/「」引用/切段/3字滑窗）→ 只召本章之前 → JS 统一复评预算1200字5段 →
+    prosePrompt【前文相关片段】块（未启用逐字节不变）+ [moge:recall] 观测日志；真 Key 活体：
+    仅存于旧章正文的细节被新章化用接住（轮1暴露词法边界：beat 锚词要具体）
+  - [完成] 契约硬化+自检钩子：注入分组置顶「▲设定契约(必须主动落实)」+ mustInclude 逐字自检 →
+    落盘前 miss 则整章重写一次（仅采纳"非截断且严格改善"）→ 仍 miss 挂 contractMiss 告警
+  - [下一站] 章内场景级 beat 细分（README 路线图唯一遗留）+ 把"beat 用具体锚词"写进开书向导提示
   - 每阶段独立提交、过全量门禁；推送等作者说"推送"
 
 ## 记忆分层同构提示
