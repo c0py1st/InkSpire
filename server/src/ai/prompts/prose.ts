@@ -60,7 +60,10 @@ ${[
   // A3 前文召回：本书旧文 FTS 检索片段，供细节呼应；未启用/无命中 = 无块逐字节旧行为
   ctx.recall ? `【前文相关片段（本书旧文自动检索，仅供呼应伏笔与细节；引用其信息可以，逐字复读原句禁止）】\n${ctx.recall}` : '',
   ctx.prevTail ? `【上一章结尾原文】（承接其场景、语气与未收的钩子）\n…${ctx.prevTail}` : '',
-  `【本章硬约束】第 ${ctx.chapter.title} 章（POV：${ctx.chapter.pov ?? '自由'}）\n${ctx.chapter.beat}`,
+  // 场景细分存在时升级为本章的节拍契约；无 scenes 的书逐字节旧行为
+  ctx.chapter.scenes && ctx.chapter.scenes.length
+    ? `【本章硬约束】第 ${ctx.chapter.title} 章（POV：${ctx.chapter.pov ?? '自由'}）\n总梗概：${ctx.chapter.beat}\n场景推进（按序逐场景写足，场景间自然过渡；不增删场景、不调换次序，篇幅在各场景间大致均衡）：\n${ctx.chapter.scenes.map((s, i) => `${i + 1}) ${s}`).join('\n')}`
+    : `【本章硬约束】第 ${ctx.chapter.title} 章（POV：${ctx.chapter.pov ?? '自由'}）\n${ctx.chapter.beat}`,
   nextBeats ? `【后续章节走向（写作时可埋钩子，但不要提前展开）】\n${nextBeats}` : '',
   // 网文模式专属（字段缺省即不出现，非网文逐字节不变）：爽点兑现 + 章末钩子去重
   ctx.chapter.payoffPoint ? `【本章爽点（须在本章兑现）】${ctx.chapter.payoffPoint}` : '',

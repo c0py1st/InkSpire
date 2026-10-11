@@ -185,7 +185,7 @@ export function OutlineView() {
               >{vol.chapters.length} 章</span>
               <button className="icon-btn" title="上移" onClick={() => moveVolume(vi, -1)}>↑</button>
               <button className="icon-btn" title="下移" onClick={() => moveVolume(vi, 1)}>↓</button>
-              <Btn small disabled={refining !== null} onClick={() => setConfirmVol(vi)} title="AI 会重写本卷每一章的 beat，已有正文不会被删除">
+              <Btn small disabled={refining !== null} onClick={() => setConfirmVol(vi)} title="AI 会重写本卷每一章的 beat 与场景细分，已有正文不会被删除">
                 {refining === vi ? '细化中…' : 'AI 细化本卷'}
               </Btn>
               {(() => {
@@ -250,6 +250,12 @@ export function OutlineView() {
                   value={c.beat}
                   onChange={(e) => mutateVolumes((vs) => { vs[vi].chapters[ci] = { ...c, beat: e.target.value }; return vs; }, false)}
                   onBlur={(e) => mutateVolumes((vs) => { vs[vi].chapters[ci] = { ...c, beat: e.target.value }; return vs; })}
+                />
+                <textarea
+                  className="beat" style={{ minHeight: 44, marginTop: 6 }} placeholder="场景推进（可选，一行一个，建议 2~4 个；生成时按序逐场景写足）"
+                  value={(c.scenes ?? []).join('\n')}
+                  onChange={(e) => mutateVolumes((vs) => { vs[vi].chapters[ci] = { ...c, scenes: e.target.value.split('\n') }; return vs; }, false)}
+                  onBlur={(e) => mutateVolumes((vs) => { const arr = e.target.value.split('\n').map((s) => s.trim()).filter(Boolean); vs[vi].chapters[ci] = { ...c, scenes: arr.length ? arr : undefined }; return vs; })}
                 />
                 <div className="row2">
                   <input

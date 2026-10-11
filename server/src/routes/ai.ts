@@ -125,6 +125,13 @@ aiRouter.post('/wizard/volumes', (req, res) => {
   });
 });
 
+/** scenes 归一：字符串数组、去空、6 条封顶；空数组 → undefined（不落字段，保逐字节旧行为） */
+function normScenes(v: unknown): string[] | undefined {
+  if (!Array.isArray(v)) return undefined;
+  const s = v.map((x) => String(x ?? '').trim()).filter(Boolean).slice(0, 6);
+  return s.length ? s : undefined;
+}
+
 aiRouter.post('/wizard/beats', (req, res) => {
   const { kernel, volumes, volIndex, chapterCount, webnovel } = req.body as {
     kernel: Kernel; volumes: VolumeBrief[]; volIndex: number; chapterCount: number; webnovel?: boolean;
@@ -142,7 +149,7 @@ aiRouter.post('/wizard/beats', (req, res) => {
       { role: 'system', content: prompt.system },
       { role: 'user', content: prompt.user },
     ], 'json', 8192);
-    sse.send({ type: 'final', chapters: extractJson<{ chapters: Array<{ title: string; beat: string; pov?: string; characters?: string[]; payoffPoint?: string; chapterHook?: string }> }>(full).chapters });
+    sse.send({ type: 'final', chapters: extractJson<{ chapters: Array<{ title: string; beat: string; scenes?: string[]; pov?: string; characters?: string[]; payoffPoint?: string; chapterHook?: string }> }>(full).chapters });
   });
 });
 
@@ -1165,7 +1172,7 @@ aiRouter.post('/projects/:slug/refine-volume/:volIndex', async (req, res) => {
       { role: 'user', content: prompt.user },
     ], { kind: 'json', maxTokens: 8192,
       onMeta: (m) => { if (m.usage) recordUsage(slug, { source: 'beats', usage: m.usage }); } });
-    const parsed = extractJson<{ chapters: Array<{ title: string; beat: string; pov?: string; characters?: string[]; payoffPoint?: string; chapterHook?: string }> }>(raw);
+    const parsed = extractJson<{ chapters: Array<{ title: string; beat: string; scenes?: string[]; pov?: string; characters?: string[]; payoffPoint?: string; chapterHook?: string }> }>(raw);
     const keepIds = vol.chapters.map((ch) => ch.id).slice(0, parsed.chapters.length);
     const { chapterId: mkId } = await import('../../../shared/src/util');
     vol.chapters = parsed.chapters.map((c, i) => {
@@ -1174,6 +1181,7 @@ aiRouter.post('/projects/:slug/refine-volume/:volIndex', async (req, res) => {
         id,
         title: c.title,
         beat: c.beat,
+        ...(normScenes(c.scenes) ? { scenes: normScenes(c.scenes) } : {}),
         pov: c.pov,
         characters: c.characters,
         status: keepStatus.get(id) ?? 'todo',

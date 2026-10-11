@@ -6,7 +6,7 @@ import { useStore } from '../state/store';
 import { BuDialog } from './BuDialog';
 import { Btn, Field } from './primitives';
 
-interface WizChapter { title: string; beat: string; pov: string; characters: string }
+interface WizChapter { title: string; beat: string; scenes: string; pov: string; characters: string }
 interface WizVolume { title: string; summary: string; chapters: WizChapter[] }
 
 const STEPS = ['构想', '内核', '分卷', '章节细纲', '设定集', '成书'];
@@ -120,7 +120,7 @@ export function Wizard() {
       if (!final?.chapters?.length) throw new Error('未取到章节细纲');
       patchVol(vi, {
         chapters: final.chapters.map((c) => ({
-          title: c.title, beat: c.beat, pov: c.pov ?? '', characters: (c.characters ?? []).join('、'),
+          title: c.title, beat: c.beat, scenes: (c.scenes ?? []).join('\n'), pov: c.pov ?? '', characters: (c.characters ?? []).join('、'),
         })),
       });
       return true;
@@ -152,6 +152,7 @@ export function Wizard() {
           id: '', title: v.title, summary: v.summary,
           chapters: v.chapters.map((c) => ({
             id: '', title: c.title, beat: c.beat, pov: c.pov,
+            scenes: c.scenes.split('\n').map((s) => s.trim()).filter(Boolean),
             characters: c.characters.split(/[、,，\s]+/).filter(Boolean), status: 'todo' as const,
           })),
         })),
@@ -334,6 +335,12 @@ export function Wizard() {
                         <input type="text" className="ch-title" value={c.title} onChange={(e) => patchChapter(activeVol, ci, { title: e.target.value })} />
                       </div>
                       <textarea className="beat" value={c.beat} onChange={(e) => patchChapter(activeVol, ci, { beat: e.target.value })} />
+                      <textarea
+                        className="beat" style={{ minHeight: 44, marginTop: 6 }}
+                        placeholder="场景推进（可选，一行一个，建议 2~4 个）"
+                        value={c.scenes}
+                        onChange={(e) => patchChapter(activeVol, ci, { scenes: e.target.value })}
+                      />
                       <div className="row2">
                         <input type="text" placeholder="视角人物" value={c.pov} onChange={(e) => patchChapter(activeVol, ci, { pov: e.target.value })} />
                         <input type="text" placeholder="出场人物（顿号分隔）" value={c.characters} onChange={(e) => patchChapter(activeVol, ci, { characters: e.target.value })} />
@@ -342,7 +349,7 @@ export function Wizard() {
                     </div>
                   ))}
                   {volumes[activeVol].chapters.length > 0 && (
-                    <Btn small ghost style={{ marginTop: 8 }} onClick={() => patchVol(activeVol, { chapters: [...volumes[activeVol].chapters, { title: '新章', beat: '', pov: '', characters: '' }] })}>
+                    <Btn small ghost style={{ marginTop: 8 }} onClick={() => patchVol(activeVol, { chapters: [...volumes[activeVol].chapters, { title: '新章', beat: '', scenes: '', pov: '', characters: '' }] })}>
                       ＋ 手动加一章
                     </Btn>
                   )}

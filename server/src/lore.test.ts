@@ -339,3 +339,51 @@ describe('B2 激活解释器 explainLoreActivation', () => {
     expect(exp.items[0].verdict).toBe('out-of-scope');
   });
 });
+
+describe('场景级 beat 细分（scenes 注入契约与老行为锁）', () => {
+  const mkOutline = (scenes?: string[]): Outline => ({
+    premise: 'p', genre: 'g', coreConflict: 'c', endingVision: 'e', styleGuide: 's',
+    volumes: [{
+      id: 'v01', title: '卷一', summary: '弧',
+      chapters: [
+        { id: 'v01c001', title: '登场', beat: '主角在山门练刀法', status: 'todo', ...(scenes ? { scenes } : {}) },
+        { id: 'v01c002', title: '试炼', beat: '主角下山历练', status: 'todo' },
+      ],
+    }],
+  });
+  const sceneArgs = (scenes?: string[]) => ({
+    outline: mkOutline(scenes), chapterId: 'v01c001' as const, characters: [], worldview: 'w', summaries: {},
+  });
+  const twoScenes = ['山门夜雨，主角独自练刀至力竭', '师父现身，掷来半块铜牌指向下山'];
+
+  it('无 scenes 的书：硬约束块保持单行旧形态（逐字节兼容面）', () => {
+    const user = prosePrompt(buildChapterContext(sceneArgs())).user;
+    expect(user).not.toContain('场景推进');
+    expect(user).toContain('【本章硬约束】第 登场 章（POV：自由）\n主角在山门练刀法');
+  });
+
+  it('有 scenes：总梗概+按序编号场景块出现，且明示不增删不调序', () => {
+    const user = prosePrompt(buildChapterContext(sceneArgs(twoScenes))).user;
+    expect(user).toContain('总梗概：主角在山门练刀法');
+    expect(user).toContain('不增删场景、不调换次序');
+    expect(user).toContain('1) 山门夜雨，主角独自练刀至力竭');
+    expect(user).toContain('2) 师父现身，掷来半块铜牌指向下山');
+    expect(user.indexOf('1) 山门夜雨')).toBeLessThan(user.indexOf('2) 师父现身'));
+  });
+
+  it('scenes 进入世界书语料：只在场景里出现的触发词也能激活条目', () => {
+    const ctx = buildChapterContext({
+      ...sceneArgs(twoScenes),
+      lorebook: [E({ id: 'tong', title: '铜牌来历', keys: ['铜牌'], content: '铜牌乃前朝暗卫信物' })],
+    });
+    expect(ctx.loreTrace?.activated.map((e) => e.id)).toEqual(['tong']);
+  });
+
+  it('beats 提示词携带 scenes 契约与锚词纪律', async () => {
+    const { beatsPrompt } = await import('./ai/prompts/beats');
+    const p = beatsPrompt({ premise: 'x', genre: 'g', coreConflict: 'c', endingVision: 'e', styleGuide: 's' }, '卷一', '弧', 3, []);
+    expect(p.user).toContain('"scenes"');
+    expect(p.user).toContain('锚词纪律');
+    expect(p.user).toContain('泛称');
+  });
+});

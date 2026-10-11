@@ -39,6 +39,7 @@ export const STYLE_BUDGET_CHARS = 1500;  // 风格范文独立预算（A2）：�
 export function chapterCorpus(chapter: ChapterBeat, prevTail: string, summariesText: string): string {
   return [
     chapter.title, chapter.beat,
+    ...(chapter.scenes ?? []),
     chapter.pov ?? '', (chapter.characters ?? []).join(' '),
     chapter.payoffPoint ?? '', chapter.chapterHook ?? '',
     prevTail, summariesText,
@@ -206,7 +207,9 @@ export function buildChapterContext(args: {
   let recallTrace: ChapterContext['recallTrace'];
   if (args.recall && args.recall.chapters.length) {
     try {
-      const terms = extractTerms(loc.chapter.beat ?? '', [...names]);
+      // 查询语料 = 本章 beat + 场景表（场景的具名锚词正是检索的天然关键词）
+      const queryText = [loc.chapter.beat ?? '', ...(loc.chapter.scenes ?? [])].filter(Boolean).join(' ');
+      const terms = extractTerms(queryText, [...names]);
       const r = recallForChapter({
         slug: args.recall.slug, outline, chapterId,
         chapters: args.recall.chapters, terms,

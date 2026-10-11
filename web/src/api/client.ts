@@ -180,7 +180,7 @@ export const api = {
   wizardVolumes: (kernel: Kernel, volumeCount: number, onDelta: (t: string) => void) =>
     sse<{ volumes: Array<{ title: string; summary: string }> }>('/api/wizard/volumes', { kernel, volumeCount }, onDelta),
   wizardBeats: (kernel: Kernel, volumes: VolumeBrief[], volIndex: number, chapterCount: number, onDelta: (t: string) => void) =>
-    sse<{ chapters: Array<{ title: string; beat: string; pov?: string; characters?: string[] }> }>(
+    sse<{ chapters: Array<{ title: string; beat: string; scenes?: string[]; pov?: string; characters?: string[] }> }>(
       '/api/wizard/beats', { kernel, volumes, volIndex, chapterCount }, onDelta,
     ),
   wizardBible: (kernel: Kernel, volumes: VolumeBrief[], onDelta: (t: string) => void) =>

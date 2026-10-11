@@ -13,6 +13,8 @@ export interface ChapterBeat {
   characters?: string[]; // 出场人物名
   status: ChapterStatus;
   wordCount?: number;
+  /** 场景级细分（可选，按序的"这一幕发生什么"，每条约 15~45 字）：生成时作为章内节奏契约注入；缺省/空 = 逐字节旧行为 */
+  scenes?: string[];
   /** 网文结构字段（可选，仅 webnovelMode 下编辑与注入；缺省 = 逐字节旧行为） */
   payoffPoint?: string;  // 本章爽点：读者情绪的兑现点
   chapterHook?: string;  // 章末钩子：驱动追读的悬念落点（同类钩子会做跨章去重）
