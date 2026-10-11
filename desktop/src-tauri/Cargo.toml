@@ -1,6 +1,6 @@
 [package]
 name = "moge-desktop"
-version = "0.1.0"
+version = "0.1.1"
 description = "墨阁桌面壳：启动随行 Node 服务并打开本机窗口"
 edition = "2021"
 
