@@ -244,7 +244,7 @@ export const api = {
   },
   chat: (
     slug: string,
-    payload: { messages: Array<{ role: 'user' | 'assistant'; content: string }>; chapterId?: string; selection?: string; onlyCurrent?: boolean },
+    payload: { messages: Array<{ role: 'user' | 'assistant'; content: string; chapterId?: string }>; chapterId?: string; selection?: string; onlyCurrent?: boolean },
     onDelta: (t: string) => void,
     onFinal?: (obj: Record<string, unknown>) => void,
     signal?: AbortSignal,

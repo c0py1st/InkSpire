@@ -51,6 +51,10 @@ export function AiDrawer() {
   const [chatBusy, setChatBusy] = useState(false);
   // A 方案「只看本章」：仅当打开了某章时生效——回答严格锁当前章，不带对话史/前情，工具也只查本章
   const [onlyCurrent, setOnlyCurrent] = useState(false);
+  // 视图过滤：只看本章=只显本章往来的消息（数据层全量照存，关开关即回全书视图，零丢失）
+  const visibleMessages = onlyCurrent && chapter
+    ? messages.filter((m) => m.chapterId === chapter.id)
+    : messages;
   const chatCtlRef = useRef<AbortController | null>(null);
   // 切书加载完成前不回写，避免把上一本书的尾部消息存进新书
   const chatHydratedRef = useRef<string | null>(null);
@@ -174,9 +178,15 @@ export function AiDrawer() {
     const question = input.trim();
     setInput('');
     const now = new Date().toISOString();
+    const curCh = chapter?.id;
     // 用户消息一并入列：刷新后的转写才有问有答，服务端摊平历史也才拿得到作者原话
-    setMessages((ms) => [...ms, { role: 'user', content: question, at: now }, { role: 'assistant', content: '', at: now }]);
-    const history = [...messages, { role: 'user' as const, content: question }].map((m) => ({ role: m.role, content: m.content }));
+    // 每条打"归属章"标记：只看本章的视图过滤与送史过滤都按它走
+    setMessages((ms) => [...ms,
+      { role: 'user', content: question, at: now, ...(curCh ? { chapterId: curCh } : {}) },
+      { role: 'assistant', content: '', at: now, ...(curCh ? { chapterId: curCh } : {}) },
+    ]);
+    const history = [...messages, { role: 'user' as const, content: question, at: now, ...(curCh ? { chapterId: curCh } : {}) }]
+      .map((m) => ({ role: m.role, content: m.content, ...(m.chapterId ? { chapterId: m.chapterId } : {}) }));
     setChatBusy(true);
     setTab('chat');
     const ctl = new AbortController();
@@ -247,8 +257,8 @@ export function AiDrawer() {
     chatCtlRef.current?.abort();
   }
 
-  /** 采纳对话提案：正文走 saveChapter(backup)+刷新，摘要走 saveSummary */
-  async function acceptChatProposal(mi: number, p: ChatProposal) {
+  /** 采纳对话提案：正文走 saveChapter(backup)+刷新，摘要走 saveSummary。按记录引用定位（视图过滤后下标不可靠） */
+  async function acceptChatProposal(rec: ChatMessageRecord, p: ChatProposal) {
     if (!slug) return;
     try {
       if (p.kind === 'chapter') {
@@ -264,20 +274,20 @@ export function AiDrawer() {
         await useStore.getState().reloadBundle();
         toast('已采纳：本章摘要已写入记忆', 'ok');
       }
-      markProposalDecided(mi, p.id);
+      markProposalDecided(rec, p.id);
     } catch (err) {
       toast(`采纳失败：${(err as Error).message}`, 'error');
     }
   }
 
-  function rejectChatProposal(mi: number, p: ChatProposal) {
-    markProposalDecided(mi, p.id);
+  function rejectChatProposal(rec: ChatMessageRecord, p: ChatProposal) {
+    markProposalDecided(rec, p.id);
   }
 
-  /** 提案卡按所在消息下标定位（持久化后未处理卡可能躺在任意一条历史消息里） */
-  function markProposalDecided(mi: number, propId: number) {
-    setMessages((ms) => ms.map((m, k) => (
-      k === mi ? { ...m, proposals: (m.proposals ?? []).map((x) => (x.id === propId ? { ...x, decided: true } : x)) } : m
+  /** 提案卡按所在消息记录定位（持久化后未处理卡可能躺在任意一条历史消息里；引用比对不怕视图过滤重排） */
+  function markProposalDecided(rec: ChatMessageRecord, propId: number) {
+    setMessages((ms) => ms.map((m) => (
+      m === rec ? { ...m, proposals: (m.proposals ?? []).map((x) => (x.id === propId ? { ...x, decided: true } : x)) } : m
     )));
   }
 
@@ -378,14 +388,16 @@ export function AiDrawer() {
       <div className="drawer-body" ref={bodyRef}>
         {tab === 'chat' && (
           <>
-            {messages.length === 0 && (
+            {visibleMessages.length === 0 && (
               <div style={{ color: 'var(--text-faint)', fontSize: 12.5, lineHeight: 1.8 }}>
-                随便问：剧情逻辑、人物动机、大纲调整建议……<br />
-                若当前打开着某一章，agent 会带着本章全文与设定来回答。<br />
-                想改文字：先在正文里选中一段，用选区工具条发起提案。
+                {onlyCurrent && chapter
+                  ? <>当前是「只看本章」视图：这里只显示在本章提问往来的对话。<br />本章还没有对话——直接问就行；换章或关掉开关可回看全书。</>
+                  : <>随便问：剧情逻辑、人物动机、大纲调整建议……<br />
+                    若当前打开着某一章，agent 会带着本章全文与设定来回答。<br />
+                    想改文字：先在正文里选中一段，用选区工具条发起提案。</>}
               </div>
             )}
-            {messages.map((m, i) => (
+            {visibleMessages.map((m, i) => (
               <div key={i} className={`msg ${m.role}`}>
                 <div className="who">{m.role === 'user' ? '你' : '编辑'}</div>
                 {m.steps?.length ? (
@@ -398,7 +410,7 @@ export function AiDrawer() {
                     ))}
                   </div>
                 ) : null}
-                {m.content || (chatBusy && i === messages.length - 1 && !m.steps?.some((s) => !s.done) ? '…' : '')}
+                {m.content || (chatBusy && i === visibleMessages.length - 1 && !m.steps?.some((s) => !s.done) ? '…' : '')}
                 {m.proposals?.length ? (
                   <div className="chat-proposals">
                     {m.proposals.map((p) => (
@@ -409,8 +421,8 @@ export function AiDrawer() {
                           ? <div className="cp-done">已处理</div>
                           : (
                             <div className="cp-actions">
-                              <Btn small primary onClick={() => void acceptChatProposal(i, p)}>采纳</Btn>
-                              <Btn small ghost onClick={() => rejectChatProposal(i, p)}>放弃</Btn>
+                              <Btn small primary onClick={() => void acceptChatProposal(m, p)}>采纳</Btn>
+                              <Btn small ghost onClick={() => rejectChatProposal(m, p)}>放弃</Btn>
                             </div>
                           )}
                       </div>
@@ -508,11 +520,14 @@ export function AiDrawer() {
               }}
             />
             <div className="hint">
-              <label className={`wn-toggle${chapter ? '' : ' dis'}`} style={{ margin: 0, gap: 5 }} title="打开后回答严格锁在当前章：不带此前对话与前情摘要，查书工具也只许查本章；问跨章的事再回来打开全书">
-                <input type="checkbox" checked={onlyCurrent && !!chapter} disabled={!chapter} onChange={(e) => setOnlyCurrent(e.target.checked)} />
-                只看本章
-              </label>
-              <span>{chapter ? (onlyCurrent ? '上下文：仅当前章（无对话史与前情）' : '上下文：当前章节 + 设定集 + 前情摘要') : '上下文：全书设定'}</span>
+              <button
+                type="button" role="switch" aria-checked={onlyCurrent && !!chapter}
+                className={`scope-chip${onlyCurrent && chapter ? ' on' : ''}`}
+                disabled={!chapter}
+                onClick={() => setOnlyCurrent((v) => !v)}
+                title="打开后：回答只依据当前章（对话史只带本章内的、前情与跨章工具收起），对话列表也只显本章往来；关掉即回全书视图，记录不丢"
+              >只看本章</button>
+              <span>{chapter ? (onlyCurrent ? '当前章对话 · 跨章问题请关闭后询问' : '上下文：当前章节 + 设定集 + 前情摘要') : '上下文：全书设定（打开一章后可限定本章）'}</span>
               <span style={{ flex: 1 }} />
               {messages.length > 0 && !chatBusy && (
                 <Btn small ghost onClick={() => void clearChat()} title="清空本书对话记录（不影响正文与设定）">清空</Btn>

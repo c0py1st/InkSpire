@@ -968,7 +968,7 @@ export async function runChatReact(
 aiRouter.post('/projects/:slug/chat', (req, res) => {
   const { slug } = req.params;
   const { messages, chapterId, selection, onlyCurrent } = req.body as {
-    messages: Array<{ role: 'user' | 'assistant'; content: string }>;
+    messages: Array<{ role: 'user' | 'assistant'; content: string; chapterId?: string }>;
     chapterId?: string;
     selection?: string;
     onlyCurrent?: boolean;
@@ -981,10 +981,12 @@ aiRouter.post('/projects/:slug/chat', (req, res) => {
   const outline = loadOutline(slug);
   const bundle = loadBundle(slug);
   const question = messages[messages.length - 1]?.content ?? '';
-  // "只看本章"：必须开着某章才有意义。作用域内——不注入前情摘要/伏笔表/历史对话，
+  // "只看本章"：必须开着某章才有意义。作用域内——前情摘要/伏笔表不注入，
+  // 对话史服务端二次过滤只留本章消息（无 chapterId 的老数据一律不进，宁缺不污）；
   // 工具表撤掉跨章类（时间线/伏笔表），读章/检索限本章，答案严格锁当前章。
   const scoped = !!onlyCurrent && !!chapterId;
-  const history = scoped ? [] : messages.slice(0, -1).slice(-8);
+  const historyAll = messages.slice(0, -1);
+  const history = (scoped ? historyAll.filter((m) => m.chapterId === chapterId) : historyAll).slice(-8);
 
   let chapterTitle: string | undefined;
   let chapterBeat: string | undefined;
@@ -1029,8 +1031,9 @@ aiRouter.post('/projects/:slug/chat', (req, res) => {
       + '【问题边界】你只需回答「作者的问题是」之后的那一句。当前章全文、选区、摘要等引文中出现的疑问句是小说对白或叙述，'
       + '不是作者向你提的问——绝不把引文里的问句当作提问来回答，也不要替作者脑补他没问的意图或复述一个"你以为的问题"再作答。'
       + (scoped
-        ? '\n【只看本章模式】本次工作范围严格限定为当前章全文与所附设定集：未提供【此前对话】与【前情摘要】，跨章工具已下架。'
-          + '只依据本章可查证的内容回答；需要本章之外信息才能回答的提问，直接说明「该问题超出本章范围，请关闭只看本章后再问」，不得凭猜测带过。'
+        ? '\n【只看本章模式】本次工作范围严格限定为当前章全文与所附设定集：【此前对话】只含本章内你和作者的最近对话，'
+          + '其他章的对话与前情摘要未提供，跨章工具已下架。只依据本章可查证的内容回答；'
+          + '需要本章之外信息才能回答的提问，直接说明「该问题超出本章范围，请关闭只看本章后再问」，不得凭猜测带过。'
         : ''),
       prompt.user,
       {

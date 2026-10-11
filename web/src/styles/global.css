@@ -986,6 +986,29 @@ textarea { resize: vertical; line-height: 1.6; }
   gap: 8px;
 }
 
+/* 「只看本章」作用域开关：与主题分段控件同族——胶囊、panel-2 底、激活 accent 高亮+浮起 */
+.scope-chip {
+  align-self: center;
+  flex: none;
+  border: 1px solid var(--line);
+  border-radius: var(--r-pill);
+  background: var(--panel-2);
+  color: var(--text-faint);
+  font-size: 11px;
+  line-height: 1;
+  padding: 5px 11px;
+  cursor: pointer;
+  transition: color var(--speed), background var(--speed), border-color var(--speed), box-shadow var(--speed), opacity var(--speed);
+}
+.scope-chip:hover:not(:disabled) { color: var(--text); }
+.scope-chip.on {
+  color: var(--accent);
+  background: var(--panel);
+  border-color: var(--accent-focus);
+  box-shadow: var(--shadow-sm);
+}
+.scope-chip:disabled { opacity: .45; cursor: not-allowed; }
+
 /* 提案卡片 */
 .proposal {
   border: 1px solid var(--line);

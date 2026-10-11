@@ -20,6 +20,17 @@ describe('sanitizeChatRecords（对话落盘消毒）', () => {
     expect(out[0].at).toBeTruthy(); // 缺省补时间戳
   });
 
+  it('chapterId 归属章：合法保留（trim）、非法/缺省丢弃（=全书消息）', () => {
+    const out = sanitizeChatRecords([
+      { role: 'user', content: 'q', chapterId: ' v01c003 ' },
+      { role: 'assistant', content: 'a', chapterId: '乱码id' },
+      { role: 'user', content: 'old' },
+    ]);
+    expect(out[0].chapterId).toBe('v01c003');
+    expect(out[1].chapterId).toBeUndefined();
+    expect(out[2].chapterId).toBeUndefined();
+  });
+
   it('steps 白名单：非法条目剔除、长度收敛、done 默认为真', () => {
     const out = sanitizeChatRecords([{
       role: 'assistant', content: 'a',

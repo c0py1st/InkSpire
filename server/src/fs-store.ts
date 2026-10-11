@@ -462,6 +462,8 @@ export function sanitizeChatRecords(input: unknown): ChatMessageRecord[] {
     const content = str(m.content, CHAT_MAX_CONTENT);
     if (!role || !content.trim()) continue;
     const rec: ChatMessageRecord = { role, content, at: str(m.at, 40) || new Date().toISOString() };
+    // 归属章：合法章 id 才保留（老数据无此字段=全书对话，视图过滤自然不显示在本章）
+    if (typeof m.chapterId === 'string' && CHAPTER_ID_RE.test(m.chapterId.trim())) rec.chapterId = m.chapterId.trim();
 
     if (Array.isArray(m.steps)) {
       const steps: ChatStepRecord[] = [];

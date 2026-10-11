@@ -300,6 +300,8 @@ export interface ChatMessageRecord {
   content: string;
   steps?: ChatStepRecord[];
   proposals?: ChatProposalRecord[];
+  /** 发消息时打开的章（形如 v01c003）；缺省=全书对话。「只看本章」按此过滤视图与送史 */
+  chapterId?: string;
   /** 落盘时间 ISO；仅记录用途，界面不显示 */
   at: string;
 }
