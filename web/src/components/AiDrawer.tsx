@@ -207,6 +207,13 @@ export function AiDrawer() {
           // register_foreshadow 是直接落盘的写工具：重拉 bundle，伏笔登记表立即出现新行
           if (phase === 'end' && name === 'register_foreshadow') void useStore.getState().reloadBundle();
           scrollBottom();
+        } else if (obj.type === 'note') {
+          // 工具轮旁的"调用前独白"：只进工作轨迹折叠区，绝不混进答案气泡（防"自问自答"观感幻觉）
+          const note = String(obj.text ?? '').trim();
+          if (note) {
+            patchLast((m) => ({ content: m.content, steps: [...(m.steps ?? []), { name: '按语', detail: note, done: true }] }));
+            scrollBottom();
+          }
         } else if (obj.type === 'proposal') {
           const p: ChatProposal = { id: ++chatPropSeq, kind: obj.kind as 'chapter' | 'summary', chapterId: String(obj.chapterId), content: String(obj.content), decided: false };
           patchLast((m) => ({ content: m.content, proposals: [...(m.proposals ?? []), p] }));
@@ -214,7 +221,7 @@ export function AiDrawer() {
         }
       });
       if (truncated) {
-        patchLast((m) => ({ content: m.content + '\n\n（回答达到长度上限被截断了——把问题拆细一点再问，或回复"继续"）' }));
+        patchLast((m) => ({ content: m.content + '\n\n（回答达到长度上限，自动续写一次后仍未写完——把问题拆细一点再问，或回复"继续"）' }));
         scrollBottom();
       }
     } catch (err) {

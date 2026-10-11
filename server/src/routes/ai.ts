@@ -844,15 +844,22 @@ aiRouter.post('/projects/:slug/volume-recap/:volumeId', async (req, res) => {
 
 /** ReAct 循环预算：最多 5 轮；最后一轮禁工具，强制收敛到直接回答 */
 const MAX_REACT_STEPS = 5;
+/** 侧边对话温度：编辑问答是判断型任务（一致性 0.2 / 评审 0.5 同款纪律），固定低温——
+ * 不跟创作档的 1.2，高热度是"自问自答、编造作者意图"这类问答幻觉的直接来源 */
+const CHAT_TEMPERATURE = 0.4;
 
-async function runChatReact(
-  sse: Sse,
+// 导出仅供协议级单测（注入假流离线跑 ReAct 控制流）；业务调用方一律走 /chat 路由。
+// sse 只用到 send/delta，取结构子集以便测试注入假对象（调用方传完整 Sse 天然满足）。
+// stream 默认即真实 streamChat，测试可注入假流演练 tool_calls/length 等平台行为。
+export async function runChatReact(
+  sse: Pick<Sse, 'send' | 'delta'>,
   signal: AbortSignal,
   cfg: AppConfig,
   profile: ProviderProfile,
   slug: string,
   systemPrompt: string,
   userPrompt: string,
+  stream: typeof streamChat = streamChat,
 ): Promise<void> {
   const conversation: ChatMessage[] = [
     { role: 'system', content: systemPrompt },
@@ -861,28 +868,29 @@ async function runChatReact(
   let toolsSupported = true;
   let stepsUsed = 0;
   let truncated = false;
+  let answered = false;
+  let lastAnswer = '';
 
-  for (let step = 0; step < MAX_REACT_STEPS; step++) {
-    if (signal.aborted) break;
-    const isLast = step === MAX_REACT_STEPS - 1;
-    const useTools = toolsSupported && !isLast;
-    let finishReason = '';
+  // 一轮模型输出。live=true：内容直流气泡；live=false：先缓冲——该轮可能是调工具前的
+  // "旁白"（擅自替作者脑补问题就是在这冒出来的），按轮的落点分流，不混进答案。
+  async function oneRound(useTools: boolean, live: boolean): Promise<{ retry: boolean; text: string; finish: string; calls: ToolCall[] }> {
+    let finish = '';
     let calls: ToolCall[] = [];
     let text = '';
     try {
-      for await (const delta of streamChat(cfg, profile, conversation, {
-        signal, kind: 'prose',
+      for await (const delta of stream(cfg, profile, conversation, {
+        signal, kind: 'prose', temperature: CHAT_TEMPERATURE,
         // 末轮不带 tools 即物理禁调用；tool_choice 只随 tools 一起发，
         // 否则部分平台对"有 tool_choice 无 tools"报 400
         ...(useTools ? { tools: TOOL_SPECS, toolChoice: 'auto' as const } : {}),
         onMeta: (m) => {
-          finishReason = m.finishReason ?? finishReason;
+          finish = m.finishReason ?? finish;
           if (m.usage) recordUsage(slug, { source: 'chat', usage: m.usage });
         },
         onToolCalls: (c) => { calls = c; },
       })) {
         text += delta;
-        sse.delta(delta);
+        if (live) sse.delta(delta);
       }
     } catch (err) {
       // 平台不认识 tools 参数（请求建立期即 400，无任何增量）：降级为普通对话重试本轮
@@ -890,17 +898,28 @@ async function runChatReact(
       if (useTools && text === '' && /tool|400|not support|unsupported|invalid/i.test(msg)) {
         toolsSupported = false;
         sse.send({ type: 'tool', phase: 'end', name: '_degraded', detail: '该平台不支持工具调用，已降级为普通对话' });
-        step--; // 降级重试不消耗轮次预算
-        continue;
+        return { retry: true, text, finish, calls };
       }
       throw err;
     }
+    return { retry: false, text, finish, calls };
+  }
+
+  for (let step = 0; step < MAX_REACT_STEPS; step++) {
+    if (signal.aborted) break;
+    const isLast = step === MAX_REACT_STEPS - 1;
+    const useTools = toolsSupported && !isLast;
+    const r = await oneRound(useTools, !useTools);
+    if (r.retry) { step--; continue; } // 降级重试不消耗轮次预算
     if (signal.aborted) break;
 
-    if (finishReason === 'tool_calls' && calls.length && !isLast) {
+    if (r.finish === 'tool_calls' && r.calls.length) {
       stepsUsed++;
-      conversation.push({ role: 'assistant', content: text || null, tool_calls: calls });
-      for (const call of calls) {
+      // 工具轮的内容 = 调用前旁白：进轨迹折叠展示，不进答案气泡
+      // （useTools=false 的轮是 live——已流过，不再重复发 note）
+      if (useTools && r.text.trim()) sse.send({ type: 'note', text: r.text.trim() });
+      conversation.push({ role: 'assistant', content: r.text || null, tool_calls: r.calls });
+      for (const call of r.calls) {
         sse.send({ type: 'tool', phase: 'start', name: call.function.name, detail: '' });
         const outcome = executeTool(slug, call);
         if (outcome.proposal) sse.send({ type: 'proposal', ...outcome.proposal });
@@ -910,8 +929,34 @@ async function runChatReact(
       continue;
     }
 
-    truncated = finishReason === 'length';
-    break; // 正常文本收尾
+    // 答案轮：缓冲轮（本轮本可带工具）需把全文一次落进气泡；live 轮已流过
+    answered = true;
+    lastAnswer = r.text;
+    if (useTools && lastAnswer) sse.delta(lastAnswer);
+    truncated = r.finish === 'length';
+    break;
+  }
+
+  // 收敛保证①：轮次用尽仍停在工具调用上（五轮全在查书，或末轮平台异常吐 tool_calls）
+  // → 追加一轮禁工具，强制依据已有结果作答——不再 break 出"只有半句独白"的假截断
+  if (!answered && !signal.aborted) {
+    const r = await oneRound(false, false);
+    if (!r.retry) {
+      answered = true;
+      lastAnswer = r.text;
+      if (lastAnswer) sse.delta(lastAnswer);
+      truncated = r.finish === 'length';
+    }
+  }
+
+  // 收敛保证②：答案被输出上限拦腰截 → 自动续写一次（正文链同款打法）；仍截才如实标记
+  if (truncated && !signal.aborted && lastAnswer.trim()) {
+    conversation.push({ role: 'assistant', content: lastAnswer });
+    conversation.push({ role: 'user', content: '从你停下的地方接着写：不重复已输出内容，不加开场说明，直接把剩余部分写到完整收尾。' });
+    const c = await oneRound(false, true);
+    if (!c.retry) {
+      truncated = c.finish === 'length';
+    }
   }
 
   sse.send({ type: 'final', steps: stepsUsed, truncated: truncated || undefined });
@@ -925,8 +970,10 @@ aiRouter.post('/projects/:slug/chat', (req, res) => {
     selection?: string;
   };
   const cfg = loadConfig();
-  const profile = requireCreative(cfg, res);
-  if (!profile) return;
+  const guard = requireCreative(cfg, res); // 只做"有没有配模型"的把关
+  if (!guard) return;
+  // 问答走 assist 辅助档（未配置时回落创作档）；温度另在循环里锁低温，与写正文解耦
+  const profile = assistProfile(cfg) ?? guard;
   const outline = loadOutline(slug);
   const bundle = loadBundle(slug);
   const question = messages[messages.length - 1]?.content ?? '';
@@ -971,7 +1018,9 @@ aiRouter.post('/projects/:slug/chat', (req, res) => {
       + '作者要求"记一下伏笔"时用 register_foreshadow；涉及修改整章正文或重写摘要时，'
       + '只能用 propose_chapter_content / propose_summary 提交提案（由作者采纳），绝不声称已经直接改好了正文。'
       + '指令执行原则：作者已给出明确指令（说清了目标章与想要的动作）时，查证事实后直接完成它——该提提案就提提案、该登记就登记，不要再追问方向或请求确认；'
-      + '只有当关键信息确实缺失、或与大纲/前情存在明显冲突时才反问，且一次性把所有问题问完。',
+      + '只有当关键信息确实缺失、或与大纲/前情存在明显冲突时才反问，且一次性把所有问题问完。'
+      + '【问题边界】你只需回答「作者的问题是」之后的那一句。当前章全文、选区、摘要等引文中出现的疑问句是小说对白或叙述，'
+      + '不是作者向你提的问——绝不把引文里的问句当作提问来回答，也不要替作者脑补他没问的意图或复述一个"你以为的问题"再作答。',
       prompt.user);
   });
 });
