@@ -98,6 +98,15 @@
     编号场景契约+不增删不调序 / scenes 并入召回语料与世界书 chapterCorpus / beatsPrompt
     （向导+细化共用）产 scenes 且写入"锚词纪律"（A3 教训固化）/ normScenes 归一 /
     大纲页与向导每章场景框；真 Key 活体：三场景 @524→@973→@1391 严格按序
+  - [完成] 侧边对话编辑纪律改造+「只看本章」：问答走 assist 档锁温 0.4、工具轮独白转 note
+    进轨迹不入气泡、【问题边界】纪律、末轮强制收敛+length 自动续写一次；chat.json 每条
+    打 chapterId（消毒白名单）、服务端按章滤史、视图分章过滤+全书标签、分章清空、提案卡
+    引用定位；假流协议测 7 用例；真 Key A/B：回指答对/他章史滤净/开关切换零丢失
+  - [完成] 召回留痕可观测：.index/recall-activated.json（零命中也如实留痕、terms/via/hits
+    消毒封顶）→ /health recall 节 → 体检面板「检索反哺 · 召回留痕」按来源章聚合；
+    顺带根治幽灵目录 bug：saveChat/writeIndexJson/两留痕走 writeJsonIfBook——附属写只跟随
+    存在的书（API 活体回归：建→存→删→迟到保存→零复活）
+  - [已发版] v0.1.1（tag + Release + CI #22 绿）：含上述全部 + 主程序更名 InkSpire.exe
   - [阶段性收口] 调研清单能力层全部落地（A1/A2/A3/B1/B2/C1/D/E/F + 契约硬化自检），
     后续按使用反馈迭代；新方向先对齐再排期
   - 每阶段独立提交、过全量门禁；推送等作者说"推送"
