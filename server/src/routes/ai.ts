@@ -26,7 +26,7 @@ import { recapFingerprint, stateAtChapter } from '../../../shared/src/types';
 import { loadCacheStats, recordUsage } from '../cache-stats';
 import { l0Check, looksAncientSetting, type L0Finding } from '../../../shared/src/l0';
 import { loadL0Report, saveChapterL0 } from '../l0-report';
-import { verifyIssueQuotes, verifyQuote } from '../quote-verify';
+import { markCitations, verifyIssueQuotes, verifyQuote } from '../quote-verify';
 import { readerReviewPrompt, normalizeReaderReview, goldenThreePrompt, normalizeGoldenThree } from '../ai/prompts/reader';
 import { buildHealthReport } from '../health-aggregate';
 import { recapPrompt } from '../ai/prompts/recap';
@@ -863,7 +863,8 @@ export async function runChatReact(
   systemPrompt: string,
   userPrompt: string,
   opts: { stream?: typeof streamChat; tools?: ToolSpec[]; onlyChapterId?: string } = {},
-): Promise<void> {
+): Promise<string> {
+  // 返回值 = 交付给用户的完整答案文本（含续写段），供调用方做引用核验
   const stream = opts.stream ?? streamChat;
   const toolSpecs = opts.tools ?? TOOL_SPECS;
   const conversation: ChatMessage[] = [
@@ -961,10 +962,12 @@ export async function runChatReact(
     const c = await oneRound(false, true);
     if (!c.retry) {
       truncated = c.finish === 'length';
+      lastAnswer += c.text;
     }
   }
 
   sse.send({ type: 'final', steps: stepsUsed, truncated: truncated || undefined });
+  return lastAnswer;
 }
 
 aiRouter.post('/projects/:slug/chat', (req, res) => {
@@ -1024,7 +1027,7 @@ aiRouter.post('/projects/:slug/chat', (req, res) => {
   });
 
   streamTask(req, res, async (sse, signal) => {
-    await runChatReact(sse, signal, cfg, profile, slug,
+    const answer = await runChatReact(sse, signal, cfg, profile, slug,
       prompt.system + '\n\n工作方式：你可以调用工具查书（搜索前文、读人物卡、读伏笔表、读世界事件时间线、读世界书条目、读任意章原文）后再回答，不要凭记忆瞎猜；'
       + '作者要求"记一下伏笔"时用 register_foreshadow；涉及修改整章正文或重写摘要时，'
       + '只能用 propose_chapter_content / propose_summary 提交提案（由作者采纳），绝不声称已经直接改好了正文。'
@@ -1032,6 +1035,8 @@ aiRouter.post('/projects/:slug/chat', (req, res) => {
       + '只有当关键信息确实缺失、或与大纲/前情存在明显冲突时才反问，且一次性把所有问题问完。'
       + '【问题边界】你只需回答「作者的问题是」之后的那一句。当前章全文、选区、摘要等引文中出现的疑问句是小说对白或叙述，'
       + '不是作者向你提的问——绝不把引文里的问句当作提问来回答，也不要替作者脑补他没问的意图或复述一个"你以为的问题"再作答。'
+      + '【引用纪律】引用对白/原文必须逐字照抄；原句中间夹有叙述时只引前半句或后半句（或以省略号断开），'
+      + '绝不把被叙述隔开的两段拼成一段"完整原话"；记不清就转述并声明非原文。'
       + (scoped
         ? '\n【只看本章模式】本次工作范围严格限定为当前章全文与所附设定集：【此前对话】只含本章内你和作者的最近对话，'
           + '其他章的对话与前情摘要未提供，跨章工具已下架。只依据本章可查证的内容回答；'
@@ -1044,6 +1049,13 @@ aiRouter.post('/projects/:slug/chat', (req, res) => {
           tools: TOOL_SPECS.filter((t) => !['read_timeline', 'read_foreshadow_list'].includes(t.function.name)),
         } : {}),
       });
+    // 引用核验（纯代码零模型）：答案里的引语候选逐条对全书正文——抓"叙述+引语缝合"类假引文；
+    // 只标注不拦截（降级要活着），提及性短引号词已在提取器排除，宁漏不误伤
+    try {
+      const book = listChapters(slug).map((c) => c.content).join('\n');
+      const items = markCitations(answer, book);
+      if (items.length) sse.send({ type: 'citations', items });
+    } catch { /* 核验失败不影响已交付的回答 */ }
   });
 });
 

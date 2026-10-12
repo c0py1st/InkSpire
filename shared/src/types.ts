@@ -311,6 +311,8 @@ export interface ChatMessageRecord {
   proposals?: ChatProposalRecord[];
   /** 发消息时打开的章（形如 v01c003）；缺省=全书对话。「只看本章」按此过滤视图与送史 */
   chapterId?: string;
+  /** 会话内引用核验结果（chat 答案显示用，不落盘——消毒白名单不复制此字段）；ok=false=书中无此原文 */
+  citations?: Array<{ quote: string; ok: boolean }>;
   /** 落盘时间 ISO；仅记录用途，界面不显示 */
   at: string;
 }

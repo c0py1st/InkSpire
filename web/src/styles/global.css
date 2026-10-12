@@ -1009,6 +1009,13 @@ textarea { resize: vertical; line-height: 1.6; }
 }
 .scope-chip:disabled { opacity: .45; cursor: not-allowed; }
 
+/* 答案里未通过引用核验的引语：灰注虚下划线 + 悬停说明，只提示不拦截 */
+.cite-bad {
+  color: var(--text-faint);
+  border-bottom: 1px dashed var(--warn);
+  cursor: help;
+}
+
 /* 全书视图下对话的归属章小标：不起眼，用时才发现一直在回答里提示的正是它 */
 .msg-ch {
   margin-left: 7px;

@@ -231,6 +231,10 @@ export function AiDrawer() {
             patchLast((m) => ({ content: m.content, steps: [...(m.steps ?? []), { name: '按语', detail: note, done: true }] }));
             scrollBottom();
           }
+        } else if (obj.type === 'citations') {
+          // 引用核验结果：ok=false 的引文稍后在气泡里灰注（只标注不拦截）
+          const items = Array.isArray(obj.items) ? (obj.items as Array<{ quote: string; ok: boolean }>).filter((x) => x && typeof x.quote === 'string') : [];
+          if (items.length) patchLast((m) => ({ content: m.content, citations: items }));
         } else if (obj.type === 'proposal') {
           const p: ChatProposal = { id: ++chatPropSeq, kind: obj.kind as 'chapter' | 'summary', chapterId: String(obj.chapterId), content: String(obj.content), decided: false };
           patchLast((m) => ({ content: m.content, proposals: [...(m.proposals ?? []), p] }));
@@ -421,7 +425,7 @@ export function AiDrawer() {
                     ))}
                   </div>
                 ) : null}
-                {m.content || (chatBusy && i === visibleMessages.length - 1 && !m.steps?.some((s) => !s.done) ? '…' : '')}
+                {m.content ? <RichAnswer content={m.content} citations={m.citations} /> : (chatBusy && i === visibleMessages.length - 1 && !m.steps?.some((s) => !s.done) ? '…' : '')}
                 {m.proposals?.length ? (
                   <div className="chat-proposals">
                     {m.proposals.map((p) => (
@@ -685,4 +689,26 @@ export function AiDrawer() {
       )}
     </>
   );
+}
+
+/** 答案富文本：引用核验未命中的引语灰注虚下划线（只提示不拦截）；无标注时原样输出 */
+function RichAnswer(props: { content: string; citations?: Array<{ quote: string; ok: boolean }> }) {
+  const bads = (props.citations ?? []).filter((c) => !c.ok).map((c) => c.quote).filter((q) => q.length >= 6);
+  if (!bads.length) return <>{props.content}</>;
+  const nodes: React.ReactNode[] = [];
+  let rest = props.content;
+  let k = 0;
+  while (rest) {
+    let bi = -1;
+    let bq = '';
+    for (const b of bads) {
+      const i = rest.indexOf(b);
+      if (i >= 0 && (bi < 0 || i < bi)) { bi = i; bq = b; }
+    }
+    if (bi < 0 || !bq) { nodes.push(rest); break; }
+    if (bi > 0) nodes.push(rest.slice(0, bi));
+    nodes.push(<span key={k++} className="cite-bad" title="书中未找到此原文——可能是拼接或转述，建议打开对应章节核对">{bq}</span>);
+    rest = rest.slice(bi + bq.length);
+  }
+  return <>{nodes}</>;
 }
