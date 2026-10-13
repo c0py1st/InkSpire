@@ -1,7 +1,7 @@
 {
   "name": "moge",
   "private": true,
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "墨阁 —— 本地长篇小说创作 agent",
   "workspaces": [
     "shared",
