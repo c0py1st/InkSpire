@@ -133,6 +133,40 @@ export function contractMisses(entries: LoreEntry[], text: string): Array<{ titl
   return out;
 }
 
+/* ---------------- 场景落实自检（大纲 scenes 契约 → 正文逐场景核对；纯函数零模型） ---------------- */
+
+/** 场景落实判定阈值：锚点命中率 ≥ 1/3 视为已落实（低于则大概率整场景被跳过/漏写） */
+export const SCENE_HIT_RATIO = 1 / 3;
+
+/**
+ * 场景落实自检（纯函数零模型）：大纲 scenes 契约 → 逐场景核对正文。锚点两路：
+ *  1) 场景按标点/虚词切段后留 2~8 字短段整段作锚（A3 教训：长句对账必被改写打挂，
+ *     >8 字段直接弃——不做滑窗，滑窗碎片是假 miss 之源）；
+ *  2) 词表专名（人物卡/世界书/章角人物）出现在场景文本里即为该场景锚点。
+ * 判定：锚点命中率 ≥ 1/3 通过；或场景专名全部在正文露面（戏核人物在场）也通过。
+ * 无锚点场景宽容跳过。返回未落实清单（含命中详情供日志/重写提示词）。
+ */
+export function sceneMisses(scenes: string[], text: string, nameTable: string[] = []): Array<{ scene: string; hit: number; total: number }> {
+  const out: Array<{ scene: string; hit: number; total: number }> = [];
+  for (const s of scenes) {
+    const anchors = new Set<string>();
+    for (const seg of s.split(new RegExp(NOT_NOUN_LIKE.source, 'g'))) {
+      const t = seg.trim();
+      if (t.length >= 2 && t.length <= 8) anchors.add(t);
+    }
+    const names = [...new Set(nameTable.map((n) => n.trim()).filter((n) => n.length >= 2 && s.includes(n)))];
+    for (const n of names) anchors.add(n);
+    if (!anchors.size) continue;
+    let hit = 0;
+    for (const a of anchors) if (text.includes(a)) hit++;
+    const namesAllPresent = names.length > 0 && names.every((n) => text.includes(n));
+    if (hit / anchors.size < SCENE_HIT_RATIO && !namesAllPresent) {
+      out.push({ scene: s.trim(), hit, total: anchors.size });
+    }
+  }
+  return out;
+}
+
 /* ---------------- 激活解释器（UI 测试器用；判定逻辑与 activateLore 严格同源） ---------------- */
 
 export type LoreVerdict = 'activated' | 'dropped' | 'out-of-scope' | 'disabled' | 'no-hit';

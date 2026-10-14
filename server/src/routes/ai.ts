@@ -31,7 +31,7 @@ import { readerReviewPrompt, normalizeReaderReview, goldenThreePrompt, normalize
 import { buildHealthReport } from '../health-aggregate';
 import { recapPrompt } from '../ai/prompts/recap';
 import { countChars, ensureParagraphIndent } from '../../../shared/src/util';
-import { contractMisses } from '../../../shared/src/lore';
+import { contractMisses, sceneMisses } from '../../../shared/src/lore';
 
 export const aiRouter = Router();
 
@@ -387,6 +387,42 @@ async function runOneChapter(task: BgGenTask, item: QueueItem): Promise<ChapterR
         }
         console.error(`[moge:bggen] 契约自检 ${chapterId}：漏 ${tokens.length} 词[${tokens.join(',')}] 重写${fresh.length}字(finish=${freshFinish || '?'}) ${adopted ? '已采纳' : '未改善,留首稿'}`);
         if (miss.length) result.contractMiss = miss;
+      }
+    }
+
+    // 场景落实自检：大纲 scenes 逐场景对正文做锚点段覆盖核对（与契约自检同族：miss→重写一次→仍 miss 挂告警）。
+    // 无 scenes 的书 sceneMisses 恒空，零成本直过；重写采纳仍守"严格改善"防越改越差。
+    if (mode === 'full' && !task.ctl.signal.aborted && !task.stopRequested && ctx.chapter.scenes?.length) {
+      const nameTable = [
+        ...ctx.cast.map((c) => c.name),
+        ...ctx.mentionOnly.map((c) => c.name),
+        ...(ctx.chapter.characters ?? []),
+        ...loadLorebook(slug).flatMap((e) => [...e.keys, e.title]),
+      ];
+      const checkScenes = (body: string) => sceneMisses(ctx.chapter.scenes ?? [], body, nameTable);
+      let sMiss = checkScenes(acc);
+      if (sMiss.length) {
+        const repair = prosePrompt(ctx, targetWords);
+        repair.user += `\n\n【场景自检未过·整章重写】上一稿跳过了以下大纲场景（锚点覆盖不足）：\n${sMiss.map((m) => `- ${m.scene}（正文仅命中 ${m.hit}/${m.total} 个锚点段）`).join('\n')}\n重写全新完整一稿：按场景契约把每一幕都写足（人物/地点/物名的原词逐字保留），篇幅在各场景间重新分配；本条要求本身不得抄入正文。`;
+        let fresh = '';
+        let freshFinish = '';
+        try {
+          for await (const delta of streamChat(cfg, creativeProfile(cfg), [
+            { role: 'system', content: repair.system },
+            { role: 'user', content: repair.user },
+          ], {
+            signal: task.ctl.signal, kind: 'prose',
+            onMeta: (m) => { freshFinish = m.finishReason ?? freshFinish; if (m.usage) recordUsage(slug, { source: 'prose-repair', chapterId, usage: m.usage }); },
+          })) fresh += delta;
+        } catch { /* 重写失败：保留首稿，miss 仍作告警 */ }
+        let adopted = false;
+        if (fresh.trim() && freshFinish !== 'length') {
+          const miss2 = checkScenes(fresh);
+          adopted = miss2.length < sMiss.length;
+          if (adopted) { acc = fresh; sMiss = miss2; }
+        }
+        console.error(`[moge:bggen] 场景自检 ${chapterId}：漏 ${sMiss.length}/${ctx.chapter.scenes.length} 场景 重写${fresh.length}字(finish=${freshFinish || '?'}) ${adopted ? '已采纳' : '未改善,留首稿'}`);
+        if (sMiss.length) result.sceneMiss = sMiss.map((m) => m.scene);
       }
     }
 

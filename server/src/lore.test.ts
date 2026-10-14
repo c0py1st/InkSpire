@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { activateLore, contractMisses, contractTokens, explainLoreActivation, loreBlockText, loreKeyHit } from '../../shared/src/lore';
+import { activateLore, contractMisses, contractTokens, explainLoreActivation, loreBlockText, loreKeyHit, sceneMisses } from '../../shared/src/lore';
 import type { LoreEntry, Outline } from '../../shared/src/types';
 
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'moge-lore-'));
@@ -122,6 +122,41 @@ describe('世界书消毒（落盘/前端输入绝不信任）', () => {
   });
 });
 
+describe('场景落实自检（sceneMisses）', () => {
+  it('写到的场景：短段锚点命中 → 不判 miss', () => {
+    const scene = '沈砚之在渡口盘查旅客，名册少了一页';
+    const body = '沈砚之在渡口盘查往来行商，逐一核对文牒。归来翻看名册，忽觉名册少了半页，墨迹犹新。';
+    expect(sceneMisses([scene], body)).toEqual([]);
+  });
+  it('整场景被跳过：锚点覆盖不足 → 判 miss 并带命中详情', () => {
+    const scene = '沈砚之在渡口盘查旅客，名册少了一页';
+    const body = '是夜大雨，他独自饮了半壶酒，听雨打窗棂，直至天明。';
+    const miss = sceneMisses([scene], body);
+    expect(miss).toHaveLength(1);
+    expect(miss[0].scene).toBe(scene);
+    expect(miss[0].hit).toBeLessThan(miss[0].total / 3 + 1e-9);
+  });
+  it('无锚点场景（全虚词/长句无短段）宽容跳过，不判 miss', () => {
+    expect(sceneMisses(['，。、；'], '任何正文')).toEqual([]);
+  });
+  it('多场景只报漏的那些', () => {
+    const s1 = '白鹤川，照胆出鞘';
+    const s2 = '黑风岭上，山匪劫掠商队';
+    const body = '白鹤川负手而立，照胆剑出鞘半寸，寒光映在雪地上。';
+    const miss = sceneMisses([s1, s2], body);
+    expect(miss).toHaveLength(1);
+    expect(miss[0].scene).toBe(s2);
+  });
+  it('词表专名旁路：短段被改写打挂，但场景人物全在场 → 放行（防假 miss）', () => {
+    const scene = '周伯劈柴，阿七扫院，沈砚之在廊下擦刀';
+    const body = '沈砚之独自饮了半壶酒，一夜无话。';
+    // 不加词表：只有 3 个短段锚点，正文 0 命中 → 假 miss
+    expect(sceneMisses([scene], body)).toHaveLength(1);
+    // 加词表：沈砚之是该场景唯一专名，正文出现 → 判已落实
+    expect(sceneMisses([scene], body, ['沈砚之'])).toEqual([]);
+  });
+});
+
 describe('契约名物自检（contractTokens / contractMisses）', () => {
   const C = (over: Partial<LoreEntry> & { id: string }): LoreEntry => E({ contract: true, ...over });
 
@@ -149,8 +184,7 @@ describe('契约名物自检（contractTokens / contractMisses）', () => {
     expect(contractTokens(C({ id: 'd', title: 'd', content: 'x', mustInclude: ['剑', '剑', ' 剑 '] }))).toEqual(['剑']);
   });
 
-  it('消毒器：mustInclude 仅契约条保留，trim + 截断 40 + 上限 12；非契约丢弃', () => {
-    const clean = sanitizeLoreEntries([
+  it('消毒器：mustInclude 仅契约条保留，trim + 截断 40 + 上限 12；非契约丢弃', () => {    const clean = sanitizeLoreEntries([
       { id: 'c', title: 'T', content: 'x', contract: true, mustInclude: [' 梓木 ', '', 'x'.repeat(60), ...Array.from({ length: 20 }, (_, i) => `t${i}`)] },
       { id: 'p', title: 'T', content: 'x', mustInclude: ['不该留'] },
     ]);

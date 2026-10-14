@@ -370,6 +370,35 @@ export interface ConsistencyIssue {
   verified?: 'exact' | 'loose' | false;
 }
 
+/* ---------------- 专名串改扫描（GET /:slug/name-audit，只读零模型） ---------------- */
+
+export interface NameSeed {
+  word: string;
+  /** 出处标签：card=人物卡 lore=世界书 quote=正文「」高频引用 */
+  source: 'card' | 'lore' | 'quote';
+}
+
+export interface NameAuditHit {
+  chapterId: string;
+  title: string;
+  context: string;
+}
+
+export interface NameAuditPair {
+  a: string;
+  b: string;
+  ca: number;
+  cb: number;
+  /** 两方都有权威出处（人物卡/世界书）：更可能是两个合法实体，降为提示 */
+  bothSeeded: boolean;
+  hits: NameAuditHit[];
+}
+
+export interface NameAuditReport {
+  pairs: NameAuditPair[];
+  scanned: { chapters: number; seeds: number };
+}
+
 /** 后台生成队列的单章结果（status 轮询与 SSE 事件的线上形状） */
 export interface GenChapterResult {
   chapterId: string;
@@ -381,6 +410,8 @@ export interface GenChapterResult {
   archived?: boolean;
   /** 契约名物自检未过：正文未出现契约要求落实的名物（title=契约条名，token=缺失词）；full 模式已自动重写一次仍未命中才落此字段 */
   contractMiss?: Array<{ title: string; token: string }>;
+  /** 场景落实自检未过（重写一次后仍漏）：场景描述清单 */
+  sceneMiss?: string[];
   error?: string;
 }
 
