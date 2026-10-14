@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import type { GoldenThreeReview } from '../../../shared/src/types';
+import type { GoldenThreeReview, NameAuditReport } from '../../../shared/src/types';
 import { api } from '../api/client';
 import { useStore } from '../state/store';
 import { Btn } from './primitives';
@@ -21,6 +21,19 @@ export function HealthView() {
   const rerunHealthL0 = useStore((s) => s.rerunHealthL0);
   const [golden, setGolden] = useState<'idle' | 'loading' | GoldenThreeReview | null>('idle');
   const goldenReport = golden === 'loading' || golden === 'idle' ? null : golden;
+  const [audit, setAudit] = useState<'loading' | NameAuditReport | null>(null);
+  const auditReport = audit && audit !== 'loading' ? audit : null;
+
+  async function runNameAudit() {
+    if (!slug) return;
+    setAudit('loading');
+    try {
+      setAudit(await api.nameAudit(slug));
+    } catch (err) {
+      setAudit(null);
+      toast((err as Error).message, 'error');
+    }
+  }
 
   async function runGolden() {
     if (!slug) return;
@@ -57,6 +70,9 @@ export function HealthView() {
             <Btn ghost small onClick={() => void loadHealth()} disabled={busy}>↻ 刷新</Btn>
             <Btn ghost small onClick={() => void rerunHealthL0()} disabled={busy} title="逐章跑一遍确定性预检（零成本）">
               {busy ? '处理中…' : '重跑 L0 预检'}
+            </Btn>
+            <Btn ghost small onClick={() => void runNameAudit()} disabled={audit === 'loading'} title="扫近似专名（差 1~2 字）且一多一少——疑似改名/笔误，只报不改">
+              {audit === 'loading' ? '扫描中…' : '专名串改扫描'}
             </Btn>
           </span>
         </div>
@@ -208,6 +224,34 @@ export function HealthView() {
                 );
               })}
             </Section>
+
+            {/* 专名串改扫描（按需触发，只读零模型）：近似对一多一少 = 疑似改名/笔误 */}
+            {auditReport && (
+              <Section
+                title={`专名串改扫描 · 可疑 ${auditReport.pairs.length} 组`}
+                tone={auditReport.pairs.length ? 'warn' : 'ok'}
+                right={<span className="hk-counts">扫 {auditReport.scanned.chapters} 章 · 词表 {auditReport.scanned.seeds} 条</span>}
+              >
+                {auditReport.pairs.length === 0 && <div className="pane-sub" style={{ padding: '6px 0' }}>没发现疑似串改——近似专名里没有"一多一少"的可疑对。扫描靠词表，新人物记得建卡或进世界书才会被盯着。</div>}
+                {auditReport.pairs.map((p) => (
+                  <div key={`${p.a}|${p.b}`} className="hk-row" style={{ cursor: 'default', alignItems: 'flex-start' }}>
+                    <span className="hk-main">
+                      「<b>{p.a}</b>」×{p.ca} ↔ 「<b>{p.b}</b>」×{p.cb}
+                      {p.bothSeeded && <span className="hk-tag" style={{ marginLeft: 6 }}>双方都有出处 · 可能是两个实体，仅提示</span>}
+                    </span>
+                    <span className="hk-tag">{p.hits.map((h) => h.title).join('、')}</span>
+                  </div>
+                ))}
+                {auditReport.pairs.length > 0 && (
+                  <div className="pane-sub" style={{ marginTop: 8, fontSize: 12 }}>
+                    低频词（右边）疑似是高频词的笔误。点章节名打开核对：
+                    {Array.from(new Map(auditReport.pairs.flatMap((p) => p.hits).map((h) => [h.chapterId, h])).values()).map((h) => (
+                      <a key={h.chapterId} style={{ marginRight: 10, cursor: 'pointer' }} onClick={() => void openChapter(h.chapterId)}>{h.title}</a>
+                    ))}
+                  </div>
+                )}
+              </Section>
+            )}
 
             {/* 模型用量 */}
             <Section

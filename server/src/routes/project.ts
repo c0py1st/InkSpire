@@ -2,6 +2,7 @@ import { Router } from 'express';
 import {
   applyOutlineSuggestion, applyStateSuggestion, ChapterFile, CharacterCard, Foreshadow, Outline, StoryEvent,
 } from '../../../shared/src/types';
+import { runNameAudit } from '../name-audit';
 import { countChars } from '../../../shared/src/util';
 import {
   getMeta, listChapterBackups, listChapters, loadBundle, loadChat, loadEvents, loadExemplars, loadForeshadows, loadLoreActivated, loadLorebook, loadOutline, loadRecaps, loadSummaries, readChapter, readChapterBackup,
@@ -293,6 +294,14 @@ projectRouter.get('/:slug/lore-test/:chapterId', (req, res) => {
 projectRouter.get('/:slug/chat', (req, res) => {
   try {
     res.json(loadChat(req.params.slug));
+  } catch (err) {
+    res.status(404).json({ error: (err as Error).message });
+  }
+});
+
+projectRouter.get('/:slug/name-audit', (req, res) => {
+  try {
+    res.json(runNameAudit(req.params.slug));
   } catch (err) {
     res.status(404).json({ error: (err as Error).message });
   }

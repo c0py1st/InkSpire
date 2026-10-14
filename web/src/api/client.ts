@@ -1,6 +1,6 @@
 /** 与后端的全部交互。SSE 统一走 sse()。 */
 import type {
-  AppConfig, Bundle, ChatMessageRecord, ChapterFile, ChapterStatus, CharacterCard, ConsistencyIssue, Foreshadow, GenChapterResult, GoldenThreeReview, HealthReport, Kernel, LoreEntry, LoreTraceEntry, Outline, ProjectMeta, ProposalRequest, ReaderReview, SearchHit, StoryEvent, StyleExemplar, Suggestion, Volume, VolumeBrief,
+  AppConfig, Bundle, ChatMessageRecord, ChapterFile, ChapterStatus, CharacterCard, ConsistencyIssue, Foreshadow, GenChapterResult, GoldenThreeReview, HealthReport, Kernel, LoreEntry, LoreTraceEntry, NameAuditReport, Outline, ProjectMeta, ProposalRequest, ReaderReview, SearchHit, StoryEvent, StyleExemplar, Suggestion, Volume, VolumeBrief,
 } from '../../../shared/src/types';
 import type { LoreTestReport } from '../../../shared/src/lore';
 
@@ -148,6 +148,9 @@ export const api = {
   health: (slug: string) => get<HealthReport>(`/api/projects/${slug}/health`),
   /** 全书 L0 重跑（纯代码零成本），返回汇总 */
   l0Rerun: (slug: string) => post<{ checked: number; flagged: number; high: number }>(`/api/projects/${slug}/l0-rerun`, {}),
+
+  /** 专名串改扫描（只读零模型：近似专名一多一少即疑） */
+  nameAudit: (slug: string) => get<NameAuditReport>(`/api/projects/${slug}/name-audit`),
 
   /** 世界事件账本 */
   getEvents: (slug: string) => get<StoryEvent[]>(`/api/projects/${slug}/events`),
