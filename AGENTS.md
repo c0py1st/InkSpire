@@ -122,6 +122,12 @@
     → 逐条 verifyQuote 对全书比对 → citations 事件 → 假引文灰注虚下划线（只标注不拦截）；
     系统提示加【引用纪律】源头禁止把被叙述隔开的两段拼成"完整原话"；真 Key 活体验证 ok=true
     不误伤 UI、诱导缝合题被新纪律当场拒绝；5 单测锁提取分类学 + 缝合判 false（221 全绿）
+  - [完成] HTTP 路由级测试基建：index.ts 拆出 app.ts 的 createApp()（组装完整树不 listen，
+    桌面/测试共用同一棵树）→ http.test.ts 9 用例随机端口真起服务：host-guard 三态、
+    书全生命周期跨路由一致性（建→bundle→章往返→search→events→name-audit→删书）、
+    非法 body 4xx；抽同时修两真 bug——错误兜底透传 body-parser 自带状态码（malformed
+    JSON 不再塌成 500）、saveChapterBody 补幽灵守卫（atomicWriteText mkdir 会把已删书
+    复活成空壳，writeJsonIfBook 之外唯一漏网写路径）；243 全绿
   - [阶段性收口] 调研清单能力层全部落地（A1/A2/A3/B1/B2/C1/D/E/F + 契约硬化自检），
     后续按使用反馈迭代；新方向先对齐再排期
   - 每阶段独立提交、过全量门禁；推送等作者说"推送"
