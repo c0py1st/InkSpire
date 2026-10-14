@@ -630,6 +630,9 @@ function toRaw(doc: ChapterDoc): string {
 
 /** 保存正文，返回字数。新内容比旧内容短 30% 以上（或 forceBackup）时先把旧稿存入备份。 */
 export function saveChapterBody(slug: string, ch: ChapterFile, forceBackup = false): number {
+  // 幽灵守卫：与 writeJsonIfBook 同纪律——书已删则拒绝写入，atomicWriteText 的 mkdir 不许复活空壳目录。
+  // 合法调用（建书、生成）时 projectDir 必已存在，零影响。
+  if (!fs.existsSync(projectDir(slug))) throw new Error(`项目不存在：${slug}`);
   const file = chapterPath(slug, ch.id);
   const prevRaw = readText(file);
   if (forceBackup || (prevRaw && ch.content.length < prevRaw.length * 0.7)) {

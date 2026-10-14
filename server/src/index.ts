@@ -1,52 +1,12 @@
-import express from 'express';
-import fs from 'node:fs';
-import path from 'node:path';
-import { DATA_DIR, ROOT, envFirst, loadConfig } from './config';
-import { hostGuard } from './host-guard';
+import { DATA_DIR, envFirst, loadConfig } from './config';
+import { createApp } from './app';
 import { purgeTrash } from './fs-store';
-import { settingsRouter } from './routes/settings';
-import { projectsRouter } from './routes/projects';
-import { projectRouter } from './routes/project';
-import { aiRouter } from './routes/ai';
 
 const PORT = Number(envFirst('PORT') ?? 8787);
-// 桌面打包（C1）时前端与 bundle 同置 resources，ROOT 相对推导失效 → 显式指定
-const webDistEnv = envFirst('WEB_DIST');
-const WEB_DIST = webDistEnv ? path.resolve(webDistEnv) : path.join(ROOT, 'web', 'dist');
 
-const app = express();
-app.disable('x-powered-by');
-// DNS rebinding 防线：只接受指向本机的 Host（API 与静态托管同口径）
-app.use(hostGuard(PORT));
-app.use(express.json({ limit: '16mb' }));
-
-fs.mkdirSync(DATA_DIR, { recursive: true });
 purgeTrash();
 
-app.use('/api/settings', settingsRouter);
-app.use('/api/projects', projectsRouter);
-app.use('/api/projects', projectRouter);
-app.use('/api', aiRouter);
-
-app.use('/api', (_req, res) => {
-  res.status(404).json({ error: '未知接口' });
-});
-
-// 生产模式：托管前端构建产物
-if (fs.existsSync(WEB_DIST)) {
-  app.use(express.static(WEB_DIST));
-  app.get(/^\/(?!api\/).*/, (_req, res) => {
-    res.sendFile(path.join(WEB_DIST, 'index.html'));
-  });
-}
-
-// 统一错误兜底
-app.use((err: Error, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
-  console.error('[moge] 未处理错误：', err);
-  if (!res.headersSent) res.status(500).json({ error: err.message });
-});
-
-app.listen(PORT, '127.0.0.1', () => {
+createApp().listen(PORT, '127.0.0.1', () => {
   const cfg = loadConfig();
   const mock = cfg.mockMode || cfg.providers.every((p) => !p.apiKey.trim());
   console.log('');
